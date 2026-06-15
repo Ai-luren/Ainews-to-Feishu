@@ -48,22 +48,44 @@
 
 ## 它是怎么工作的
 
-```
-   cron-job.org 定时触发（准时，北京时间）
-   POST → GitHub Actions workflow_dispatch
-             ↓
-        python push.py
-             ↓
-   ┌────────┴────────┐
-   ↓                 ↓
- [_push_aihot]     [_push_juya]
-   拉 aihot API      拉 juya RSS
-   渲染飞书卡片      渲染飞书卡片
-   POST 到飞书群     POST 到飞书群
-   写 state.json     写 state.json
+```mermaid
+flowchart TB
+    subgraph 调度["调度层"]
+        C1[cron-job.org<br/>08:00-10:30 每30分钟]
+        C2[GitHub Actions<br/>11:00 兜底]
+    end
 
-  * 两个源完全独立，各有去重/失败计数/停更告警
-  * 任一源推成功后，后续 cron 会跳过该源
+    subgraph 推送["推送层"]
+        P[python push.py]
+        A[_push_aihot]
+        J[_push_juya]
+    end
+
+    subgraph 数据["数据源"]
+        A1[aihot API<br/>JSON]
+        J1[juya RSS<br/>XML]
+    end
+
+    subgraph 状态["状态管理"]
+        S[state.json]
+    end
+
+    subgraph 输出["输出"]
+        F[飞书群]
+    end
+
+    C1 -->|POST workflow_dispatch| P
+    C2 -->|schedule| P
+    P --> A
+    P --> J
+    A -->|fetch_daily| A1
+    J -->|fetch_rss| J1
+    A -->|检查 pushed_date| S
+    J -->|检查 pushed_date| S
+    A -->|send_lark_card| F
+    J -->|send_lark_card| F
+    A -->|更新 state| S
+    J -->|更新 state| S
 ```
 
 **推送时序**（cron-job.org，北京时间）：08:00 → 08:30 → 09:00 → 09:30 → 10:00 → 10:30
