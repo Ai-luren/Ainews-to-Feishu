@@ -7,8 +7,8 @@
 | juya | `https://daily.juya.uk/rss.xml`，解析 HTML 内容 | rss.py + lark_card.py |
 | aihot | `https://aihot.virxact.com/api/public/daily`，原生 JSON | aihot.py + aihot_card.py |
 
-**调度**：GitHub Actions cron，北京时间 09:00 / 09:30 / 10:00 / 10:30。
-**去重**：每个源独立记录 pushed_date，当天任一源推送成功后，该源后续 cron 自动跳过。飞书群每天最多收到 2 条卡片。
+**调度**：cron-job.org（外部定时器，更准时）每 30 分钟触发一次，北京时间 08:00/08:30/09:00/09:30/10:00/10:30，共 6 次。GitHub Actions 的 `schedule` 只保留北京 11:00 一次作为兜底。
+**去重**：每个源独立记录 pushed_date，当天任一源推送成功后，该源后续 cron 自动跳过。飞书群每天最多收到 2 条卡片（aihot + juya）。
 
 ---
 
@@ -49,33 +49,48 @@
 ## 它是怎么工作的
 
 ```
-   GitHub Actions 触发
-   (cron 每 30 分钟一次 / 或手动 dispatch)
-            ↓
-       python push.py
-            ↓
+   cron-job.org 定时触发（准时，北京时间）
+   POST → GitHub Actions workflow_dispatch
+             ↓
+        python push.py
+             ↓
    ┌────────┴────────┐
    ↓                 ↓
- [_push_juya]     [_push_aihot]
-   1. 读 state.json    1. 读 state.json
-      今天 juya 推过？ 今天 aihot 推过？
-      → 是 → skip      → 是 → skip
-   2. 拉 RSS           2. GET /api/public/daily
-   3. 找今天条目       3. 取 sections[]
-      无 → skip           空 → skip
-   4. HTML→卡片         4. JSON→卡片
-   5. POST 飞书         5. POST 飞书
-   6. 成功 → 写状态    6. 成功 → 写状态
-      失败 → 计数+1       失败 → 计数+1
-      连续 3 次 → 告警    连续 3 次 → 告警
+ [_push_aihot]     [_push_juya]
+   拉 aihot API      拉 juya RSS
+   渲染飞书卡片      渲染飞书卡片
+   POST 到飞书群     POST 到飞书群
+   写 state.json     写 state.json
 
-  * 两个流程完全独立，一个失败不影响另一个。
-  * backfill（补发指定日期）不写状态，可重复跑。
+  * 两个源完全独立，各有去重/失败计数/停更告警
+  * 任一源推成功后，后续 cron 会跳过该源
 ```
 
-**失败告警（到同一个飞书群）**：
-- 任一源连续 3 次拉取/推送失败 → 发一条告警
-- 任一源连续 3 天没更新 → 发一条"停更告警"
+**推送时序**（cron-job.org，北京时间）：08:00 → 08:30 → 09:00 → 09:30 → 10:00 → 10:30
+**兜底**：GitHub Actions 每天 11:00 再跑一次（cron-job.org 万一挂了也能兜底推一次）
+
+---
+
+## cron-job.org 配置（主调度器）
+
+登录 cron-job.org → Create cronjob，填入以下值：
+
+| 项 | 值 |
+|---|---|
+| **Title** | `ai-news-daily-push` |
+| **URL** | `https://api.github.com/repos/<YOUR_USERNAME>/design-team-ai-daily/actions/workflows/daily-ai-news.yml/dispatches` |
+| **Method** | `POST` |
+| **Header 1 - Name** | `Authorization` |
+| **Header 1 - Value** | `Bearer <YOUR_GITHUB_PAT>` |
+| **Header 2 - Name** | `Accept` |
+| **Header 2 - Value** | `application/vnd.github.v3+json` |
+| **Header 3 - Name** | `Content-Type` |
+| **Header 3 - Value** | `application/json` |
+| **Body / POST data** | `{"ref":"master","inputs":{"target_date":""}}` |
+| **Execution time / Timezone** | `Asia/Shanghai`（选这个时区，填的就是北京时间）|
+| **Schedule** | 每 30 分钟一次：08:00、08:30、09:00、09:30、10:00、10:30（勾这 6 个小时/分钟） |
+
+> **为什么用 cron-job.org**：GitHub Actions 的 `schedule` 在 UTC 01:00-02:30（北京 09:00-10:30）经常排队延迟 2-5 小时，cron-job.org 的准时性好得多。
 
 ---
 
