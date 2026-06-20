@@ -109,9 +109,16 @@ def test_failure_bumps_and_alerts_at_three(state_path, monkeypatch):
 
 
 def test_degraded_parse_falls_back_to_text(state_path, monkeypatch):
-    """parse_entry_to_card 返回 None → 降级：不标记已推送，发运维告警，返回失败允许重试。"""
+    """11:00 前降级：不标记已推送，发运维告警，返回失败允许重试。"""
     sent = []
     monkeypatch.setattr(push, "_today", lambda: date(2026, 4, 27))
+    # 模拟 09:00 北京时间（11:00 前的重试窗口）
+    fake_now = datetime(2026, 4, 27, 9, 0, tzinfo=pytz.timezone("Asia/Shanghai"))
+    monkeypatch.setattr(push, "datetime",
+                        type("FakeDT", (), {
+                            "now": staticmethod(lambda tz=None: fake_now),
+                            "strptime": datetime.strptime,
+                        }))
     monkeypatch.setattr(push, "fetch_rss", lambda: "<rss/>")
     monkeypatch.setattr(
         push, "extract_today_entry",
@@ -173,6 +180,13 @@ def test_degraded_alert_only_once_per_day(state_path, monkeypatch):
     }))
     sent = []
     monkeypatch.setattr(push, "_today", lambda: date(2026, 4, 27))
+    # 模拟 09:30 北京时间（11:00 前的重试窗口）
+    fake_now = datetime(2026, 4, 27, 9, 30, tzinfo=pytz.timezone("Asia/Shanghai"))
+    monkeypatch.setattr(push, "datetime",
+                        type("FakeDT", (), {
+                            "now": staticmethod(lambda tz=None: fake_now),
+                            "strptime": datetime.strptime,
+                        }))
     monkeypatch.setattr(push, "fetch_rss", lambda: "<rss/>")
     monkeypatch.setattr(
         push, "extract_today_entry",
@@ -190,6 +204,76 @@ def test_degraded_alert_only_once_per_day(state_path, monkeypatch):
     assert rc == 1
     # 不重发告警
     assert sent == []
+
+
+def test_degraded_final_fallback_after_11am(state_path, monkeypatch):
+    """11:00 后仍降级 → 发文本到主群 + 标记已推送（最终兜底）。"""
+    sent = []
+    monkeypatch.setattr(push, "_today", lambda: date(2026, 4, 27))
+    # 模拟 11:30 北京时间
+    fake_now = datetime(2026, 4, 27, 11, 30, tzinfo=pytz.timezone("Asia/Shanghai"))
+    monkeypatch.setattr(push, "datetime",
+                        type("FakeDT", (), {
+                            "now": staticmethod(lambda tz=None: fake_now),
+                            "strptime": datetime.strptime,
+                        }))
+    monkeypatch.setattr(push, "fetch_rss", lambda: "<rss/>")
+    monkeypatch.setattr(
+        push, "extract_today_entry",
+        lambda xml, today: {
+            "title": "2026-04-27", "link": "http://x",
+            "content_html": "", "description": "",
+            "published_dt": FAKE_PUB,
+        },
+    )
+    monkeypatch.setattr(push, "parse_entry_to_card", lambda e: None)
+    monkeypatch.setattr(push, "send_lark_text",
+                        lambda url, secret, text: sent.append((url, text)))
+    with patch.dict(os.environ, ENV):
+        rc = push.main()
+    # 最终兜底 = 成功
+    assert rc == 0
+    urls = [s[0] for s in sent]
+    # 主群收到文本
+    assert ENV["LARK_WEBHOOK_URL"] in urls
+    # 标记已推送
+    assert json.loads(state_path.read_text())["last_pushed_date"] == "2026-04-27"
+
+
+def test_degraded_retry_before_11am(state_path, monkeypatch):
+    """11:00 前降级 → 不发主群文本，返回失败允许重试。"""
+    sent = []
+    monkeypatch.setattr(push, "_today", lambda: date(2026, 4, 27))
+    # 模拟 09:30 北京时间
+    fake_now = datetime(2026, 4, 27, 9, 30, tzinfo=pytz.timezone("Asia/Shanghai"))
+    monkeypatch.setattr(push, "datetime",
+                        type("FakeDT", (), {
+                            "now": staticmethod(lambda tz=None: fake_now),
+                            "strptime": datetime.strptime,
+                        }))
+    monkeypatch.setattr(push, "fetch_rss", lambda: "<rss/>")
+    monkeypatch.setattr(
+        push, "extract_today_entry",
+        lambda xml, today: {
+            "title": "2026-04-27", "link": "http://x",
+            "content_html": "", "description": "",
+            "published_dt": FAKE_PUB,
+        },
+    )
+    monkeypatch.setattr(push, "parse_entry_to_card", lambda e: None)
+    monkeypatch.setattr(push, "send_lark_text",
+                        lambda url, secret, text: sent.append((url, text)))
+    with patch.dict(os.environ, ENV):
+        rc = push.main()
+    # 11:00 前 = 失败，允许重试
+    assert rc == 1
+    urls = [s[0] for s in sent]
+    # 主群不收文本
+    assert ENV["LARK_WEBHOOK_URL"] not in urls
+    # 运维群收告警
+    assert ENV["LARK_OPS_WEBHOOK_URL"] in urls
+    # 不标记已推送
+    assert json.loads(state_path.read_text())["last_pushed_date"] is None
 
 
 def test_backfill_refuses_to_duplicate_today(state_path, monkeypatch):

@@ -115,7 +115,6 @@ def _push_juya(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
         card = parse_entry_to_card(entry)
         if card is None:
             # 解析降级：content:encoded 为空或格式异常。
-            # 实时模式：不标记已推送，返回 False 让后续 cron 重试。
             # 补推模式：没有重试机制，直接发降级文本。
             if backfill:
                 title = entry.get("title") or "<untitled>"
@@ -124,6 +123,18 @@ def _push_juya(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
                 _log(f"[juya] [ok] pushed (degraded/backfill) {today}")
                 return True
 
+            # 最终兜底：11:00 后仍降级 → 发文本到主群，有总比没有好
+            now_bj = datetime.now(BEIJING)
+            if now_bj.hour >= 11:
+                title = entry.get("title") or "<untitled>"
+                link = entry.get("link") or "#"
+                send_lark_text(webhook, secret,
+                               f"🤖 橘鸦 AI 早报 · {title}\n（卡片解析失败，点击查看完整日报）\n{link}")
+                mark_pushed_today(STATE_PATH, today)
+                _log(f"[juya] [ok] pushed (final-fallback) {today}")
+                return True
+
+            # 11:00 前：不标记已推送，返回 False 让后续 cron 重试
             if should_alert_juya_degraded(STATE_PATH, today):
                 link = entry.get("link") or "#"
                 _alert(ops_webhook, ops_secret,

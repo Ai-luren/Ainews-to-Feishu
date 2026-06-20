@@ -6,10 +6,10 @@ name: daily-ai-news-push
 
 on:
   schedule:
-    # 兜底：仅北京 11:00（UTC 03:00）跑一次
-    # 主调度靠 cron-job.org（每 30 分钟一次，08:00-10:30 北京时间）
+    # 兜底：仅北京 12:00（UTC 04:00）跑一次
+    # 主调度靠 cron-job.org（每 30 分钟一次，08:00-11:30 北京时间）
     # cron-job.org 的准时性比 GitHub Actions 好得多
-    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
   workflow_dispatch:
     inputs:
       target_date:
