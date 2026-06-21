@@ -134,7 +134,7 @@ LARK_URL=""; LARK_SEC=""; OPS_URL=""; OPS_SEC=""
 
 # ---------- 3.6 设置 RSS_URL Variable（可选）----------
 echo ""
-DEFAULT_RSS="https://imjuya.github.io/juya-ai-daily/rss.xml"
+DEFAULT_RSS="https://daily.juya.uk/rss.xml"
 info "RSS 源地址（留空使用默认：橘鸦 AI 早报）"
 read -rp "RSS URL [默认: $DEFAULT_RSS]: " CUSTOM_RSS
 if [[ -n "$CUSTOM_RSS" ]]; then

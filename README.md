@@ -100,10 +100,10 @@ flowchart TB
 | 项 | 值 |
 |---|---|
 | **Title** | `ai-news-daily-push` |
-| **URL** | `https://api.github.com/repos/<YOUR_USERNAME>/design-team-ai-daily/actions/workflows/daily-ai-news.yml/dispatches` |
+| **URL** | `https://api.github.com/repos/<你的用户名>/design-team-ai-daily/actions/workflows/daily-ai-news.yml/dispatches` |
 | **Method** | `POST` |
 | **Header 1 - Name** | `Authorization` |
-| **Header 1 - Value** | `Bearer <YOUR_GITHUB_PAT>` |
+| **Header 1 - Value** | `Bearer <你的 GitHub PAT>` |
 | **Header 2 - Name** | `Accept` |
 | **Header 2 - Value** | `application/vnd.github.v3+json` |
 | **Header 3 - Name** | `Content-Type` |

@@ -10,7 +10,7 @@ description: Use when the user wants to set up, test, configure, or troubleshoot
 这个系统跑在 **GitHub Actions** 上，每天自动抓 RSS 日报推到飞书群。
 核心配置全在 GitHub，换电脑/换群/换源都不需要动代码。
 
-**仓库：** `<YOUR_USERNAME>/design-team-ai-daily`（私有）
+**仓库：** `<你的用户名>/design-team-ai-daily`（私有）
 
 ## 在其他 AI 工具里使用
 
@@ -19,7 +19,7 @@ description: Use when the user wants to set up, test, configure, or troubleshoot
 **Codex / Trae Solo / Cursor 等工具的用法：**
 把下面这段话发给它，然后说你要做什么（换群/换源/排障等），它会照着执行：
 
-> 我有一个 AI 新闻自动推送系统，仓库是 `<YOUR_USERNAME>/design-team-ai-daily`。
+> 我有一个 AI 新闻自动推送系统，仓库是 `<你的用户名>/design-team-ai-daily`。
 > 推送跑在 GitHub Actions 上，配置通过 `gh` CLI 管理：
 > - 换飞书群：`gh secret set LARK_WEBHOOK_URL / LARK_WEBHOOK_SECRET / LARK_OPS_WEBHOOK_URL / LARK_OPS_WEBHOOK_SECRET`
 > - 换 RSS 源：`gh variable set RSS_URL --body "新地址"`
@@ -54,7 +54,7 @@ description: Use when the user wants to set up, test, configure, or troubleshoot
 ### 第 1 步：克隆仓库并推到你的 GitHub
 
 ```bash
-git clone https://github.com/<YOUR_USERNAME>/design-team-ai-daily.git ~/design-team-ai-daily
+git clone https://github.com/<你的用户名>/design-team-ai-daily.git ~/design-team-ai-daily
 cd ~/design-team-ai-daily
 gh repo create <你的GitHub用户名>/design-team-ai-daily --private --source=. --push
 ```
@@ -107,7 +107,7 @@ gh run watch -R <用户名>/design-team-ai-daily
 
 ```bash
 brew install gh 2>/dev/null; gh auth login
-git clone https://github.com/<YOUR_USERNAME>/design-team-ai-daily.git ~/design-team-ai-daily
+git clone https://github.com/<你的用户名>/design-team-ai-daily.git ~/design-team-ai-daily
 mkdir -p ~/.claude/skills && ln -s ~/design-team-ai-daily/skills/daily-ai-news ~/.claude/skills/daily-ai-news
 ```
 
@@ -123,14 +123,14 @@ mkdir -p ~/.claude/skills && ln -s ~/design-team-ai-daily/skills/daily-ai-news ~
 2. 更新 Secrets：
 
 ```bash
-gh secret set LARK_WEBHOOK_URL        -R <YOUR_USERNAME>/design-team-ai-daily
-gh secret set LARK_WEBHOOK_SECRET     -R <YOUR_USERNAME>/design-team-ai-daily
-gh secret set LARK_OPS_WEBHOOK_URL    -R <YOUR_USERNAME>/design-team-ai-daily
-gh secret set LARK_OPS_WEBHOOK_SECRET -R <YOUR_USERNAME>/design-team-ai-daily
+gh secret set LARK_WEBHOOK_URL        -R <你的用户名>/design-team-ai-daily
+gh secret set LARK_WEBHOOK_SECRET     -R <你的用户名>/design-team-ai-daily
+gh secret set LARK_OPS_WEBHOOK_URL    -R <你的用户名>/design-team-ai-daily
+gh secret set LARK_OPS_WEBHOOK_SECRET -R <你的用户名>/design-team-ai-daily
 ```
 
 3. 去**旧群**飞书设置里删除旧机器人（防 webhook 泄露）
-4. 手动触发一次验证：`gh workflow run daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily`
+4. 手动触发一次验证：`gh workflow run daily-ai-news.yml -R <你的用户名>/design-team-ai-daily`
 
 ---
 
@@ -139,19 +139,19 @@ gh secret set LARK_OPS_WEBHOOK_SECRET -R <YOUR_USERNAME>/design-team-ai-daily
 RSS URL 存在 GitHub Variable（不是 Secret，因为不敏感），改一条命令生效，**无需动代码**：
 
 ```bash
-gh variable set RSS_URL --body "https://你的新RSS地址" -R <YOUR_USERNAME>/design-team-ai-daily
+gh variable set RSS_URL --body "https://你的新RSS地址" -R <你的用户名>/design-team-ai-daily
 ```
 
 查看当前 RSS 源：
 
 ```bash
-gh variable list -R <YOUR_USERNAME>/design-team-ai-daily
+gh variable list -R <你的用户名>/design-team-ai-daily
 ```
 
 恢复默认（橘鸦 AI 早报）：
 
 ```bash
-gh variable delete RSS_URL -R <YOUR_USERNAME>/design-team-ai-daily
+gh variable delete RSS_URL -R <你的用户名>/design-team-ai-daily
 ```
 
 > 如果 `RSS_URL` 变量未设置，系统自动使用橘鸦 AI 早报作为默认源。
@@ -163,14 +163,14 @@ gh variable delete RSS_URL -R <YOUR_USERNAME>/design-team-ai-daily
 强制推送今天的内容（幂等，如果今天已推过会跳过）：
 
 ```bash
-gh workflow run daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily
-gh run watch -R <YOUR_USERNAME>/design-team-ai-daily
+gh workflow run daily-ai-news.yml -R <你的用户名>/design-team-ai-daily
+gh run watch -R <你的用户名>/design-team-ai-daily
 ```
 
 补推历史某天（不更新推送状态，不影响今天）：
 
 ```bash
-gh workflow run daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily -f target_date=2026-05-01
+gh workflow run daily-ai-news.yml -R <你的用户名>/design-team-ai-daily -f target_date=2026-05-01
 ```
 
 ---
@@ -179,10 +179,10 @@ gh workflow run daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily -f tar
 
 ```bash
 # 最近 10 次推送记录
-gh run list --workflow=daily-ai-news.yml --limit 10 -R <YOUR_USERNAME>/design-team-ai-daily
+gh run list --workflow=daily-ai-news.yml --limit 10 -R <你的用户名>/design-team-ai-daily
 
 # 当前 RSS 源
-gh variable list -R <YOUR_USERNAME>/design-team-ai-daily
+gh variable list -R <你的用户名>/design-team-ai-daily
 ```
 
 日志关键词：`[ok] pushed` = 成功推出；`[skip] already pushed today` = 今天已推；`[skip] juya not updated yet` = 源头未更新。
@@ -195,24 +195,24 @@ Claude 按顺序执行：
 
 **1. 看最近几次 run 状态**
 ```bash
-gh run list --workflow=daily-ai-news.yml --limit 5 -R <YOUR_USERNAME>/design-team-ai-daily
+gh run list --workflow=daily-ai-news.yml --limit 5 -R <你的用户名>/design-team-ai-daily
 ```
 全部 `success` 但没收到 → 看日志关键词（可能是 `[skip]`）。有红叉 → 下一步。
 
 **2. 看失败详情**
 ```bash
-gh run view <id> --log-failed -R <YOUR_USERNAME>/design-team-ai-daily
+gh run view <id> --log-failed -R <你的用户名>/design-team-ai-daily
 ```
 
 **3. 确认 RSS 源是否更新**
 ```bash
-curl -s "$(gh variable list -R <YOUR_USERNAME>/design-team-ai-daily --json name,value -q '.[] | select(.name=="RSS_URL") | .value' 2>/dev/null || echo 'https://imjuya.github.io/juya-ai-daily/rss.xml')" | grep -o '<pubDate>[^<]*</pubDate>' | head -3
+curl -s "$(gh variable list -R <你的用户名>/design-team-ai-daily --json name,value -q '.[] | select(.name=="RSS_URL") | .value' 2>/dev/null || echo 'https://imjuya.github.io/juya-ai-daily/rss.xml')" | grep -o '<pubDate>[^<]*</pubDate>' | head -3
 ```
 最新 pubDate 不是今天 → 源头还没发，等。
 
 **4. 手动触发**
 ```bash
-gh workflow run daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily && gh run watch -R <YOUR_USERNAME>/design-team-ai-daily
+gh workflow run daily-ai-news.yml -R <你的用户名>/design-team-ai-daily && gh run watch -R <你的用户名>/design-team-ai-daily
 ```
 
 ---
@@ -221,10 +221,10 @@ gh workflow run daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily && gh 
 
 | 意图 | 命令 |
 |---|---|
-| 临时暂停 | `gh workflow disable daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily` |
-| 恢复 | `gh workflow enable daily-ai-news.yml -R <YOUR_USERNAME>/design-team-ai-daily` |
+| 临时暂停 | `gh workflow disable daily-ai-news.yml -R <你的用户名>/design-team-ai-daily` |
+| 恢复 | `gh workflow enable daily-ai-news.yml -R <你的用户名>/design-team-ai-daily` |
 | 下线保档 | disable + 去飞书群手动删机器人 + `gh secret delete LARK_WEBHOOK_URL` ×4 |
-| 彻底删除（不可逆） | 下线保档 + `gh repo delete <YOUR_USERNAME>/design-team-ai-daily --yes` |
+| 彻底删除（不可逆） | 下线保档 + `gh repo delete <你的用户名>/design-team-ai-daily --yes` |
 
 **执行"彻底删除"前必须向用户明确确认，即使在 auto mode 下也要先问。**
 
