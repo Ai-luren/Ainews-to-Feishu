@@ -16,6 +16,8 @@ def mock_env(monkeypatch):
     monkeypatch.setenv("LARK_WEBHOOK_SECRET", "test-secret")
     monkeypatch.setenv("LARK_OPS_WEBHOOK_URL", "https://example.com/ops")
     monkeypatch.setenv("LARK_OPS_WEBHOOK_SECRET", "ops-secret")
+    # 短路 builders，避免真实网络请求
+    monkeypatch.setattr(push, "_push_builders", lambda *a, **kw: True)
 
 
 @pytest.fixture
