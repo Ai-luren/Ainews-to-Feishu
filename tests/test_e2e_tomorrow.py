@@ -1,9 +1,7 @@
 """端到端模拟测试：模拟明天早上 8 点的完整推送流程。"""
 import json
-import os
 from datetime import date, datetime
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
