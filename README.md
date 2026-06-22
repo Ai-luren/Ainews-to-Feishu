@@ -119,33 +119,82 @@ tests/           # 88 个测试
 
 ```mermaid
 flowchart TB
-    subgraph 调度["调度"]
-        C1[cron-job.org<br/>08:00-11:30 每30分钟]
-        C2[GitHub Actions<br/>12:00 兜底]
+    subgraph 调度["🕐 调度层"]
+        C1["cron-job.org<br/>08:00-12:30 每30分钟"]
+        C2["GitHub Actions<br/>12:00 兜底"]
     end
 
-    subgraph 推送["推送"]
-        P[python push.py]
-        A[_push_aihot]
-        J[_push_juya]
+    subgraph 推送["⚙️ 推送层"]
+        P["push.py<br/>主入口"]
+        A["aihot.py → aihot_card.py<br/>JSON → 卡片"]
+        J["rss.py → lark_card.py<br/>XML → 卡片"]
     end
 
-    subgraph 数据["数据源"]
-        A1[aihot API<br/>JSON]
-        J1[juya RSS<br/>XML]
+    subgraph 数据["📡 数据源"]
+        A1["aihot API<br/>JSON"]
+        J1["juya RSS<br/>XML"]
     end
 
-    subgraph 输出["输出"]
-        F[飞书群]
+    subgraph 输出["📱 输出"]
+        F["飞书群<br/>卡片消息"]
     end
 
-    C1 -->|POST| P
-    C2 -->|schedule| P
-    P --> A --> A1
-    P --> J --> J1
-    A -->|卡片| F
-    J -->|卡片| F
+    C1 -->|"POST 触发"| P
+    C2 -->|"定时触发"| P
+    P --> A
+    P --> J
+    A --> A1
+    J --> J1
+    A -->|"卡片"| F
+    J -->|"卡片"| F
+
+    style C1 fill:#e1f5fe,stroke:#0288d1
+    style C2 fill:#e3f2fd,stroke:#1976d2
+    style P fill:#fff3e0,stroke:#f57c00
+    style A fill:#e8f5e9,stroke:#388e3c
+    style J fill:#e8f5e9,stroke:#388e3c
+    style F fill:#fce4ec,stroke:#c62828
 ```
+
+## 容错机制
+
+```mermaid
+flowchart LR
+    A["09:00 cron 触发"] --> B{"juya 已发布?"}
+    B -->|"否"| S1["SKIP<br/>等下一个 cron"]
+    B -->|"是"| C{"content:encoded<br/>有内容?"}
+    C -->|"空"| D["降级模式<br/>运维群告警"]
+    D --> E{"11:00 前?"}
+    E -->|"是"| F["不标记已推送<br/>返回失败<br/>等下一个 cron 重试"]
+    E -->|"否"| G["最终兜底<br/>发带链接文本到主群"]
+    C -->|"有"| H["解析 HTML<br/>渲染飞书卡片"]
+    H --> I["推送成功<br/>标记已推送"]
+
+    style S1 fill:#f5f5f5,stroke:#9e9e9e
+    style D fill:#fff3e0,stroke:#f57c00
+    style F fill:#fff3e0,stroke:#f57c00
+    style G fill:#e3f2fd,stroke:#1976d2
+    style I fill:#e8f5e9,stroke:#388e3c
+```
+
+**一个上午的完整时间线**（以 juya 09:00 发布为例）：
+
+| 时间 | 触发 | juya 状态 | 行为 |
+|------|------|----------|------|
+| 08:00 | cron | 未发布 | skip |
+| 08:30 | cron | 未发布 | skip |
+| 09:00 | cron | 已发布，content 为空 | 降级 → 告警 → 不标记 → 等重试 |
+| 09:30 | cron | content 已完整 | **卡片推送成功** |
+| 10:00+ | cron | 已推送 | skip |
+
+最坏情况（juya 一直没填 content）：
+
+| 时间 | 行为 |
+|------|------|
+| 09:00-10:30 | 降级 → 告警（只发1次）→ 不标记 → 等重试 |
+| 11:00 | 降级 → **发文本到主群**（带链接）→ 标记已推送 |
+| 11:30 | skip（已推送） |
+| 12:00 | GitHub Actions 兜底 → skip |
 
 ## 本地开发
 
@@ -161,13 +210,10 @@ export LARK_OPS_WEBHOOK_SECRET="同上"
 python push.py
 ```
 
-## 容错机制
+## 告警机制
 
 | 场景 | 行为 |
 |---|---|
-| 源头还没发今天的 | skip，等下一个 cron |
-| 卡片解析失败（11:00 前） | 不标记已推送，运维群告警，等下一个 cron 重试 |
-| 卡片解析失败（11:00 后） | 发带链接的文本到主群（最终兜底） |
 | 连续 3 次拉取失败 | 运维群告警，重置计数 |
 | 连续 3 天没更新 | 运维群告警"停更" |
 | 飞书 webhook 失效 | 连续 3 次失败后告警 |
