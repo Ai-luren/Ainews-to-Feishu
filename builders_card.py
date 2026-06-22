@@ -66,7 +66,7 @@ def render_card(daily: dict) -> dict:
             elements.append({"tag": "hr"})
 
         name = _escape_md(tweet.get("name", ""))
-        handle = tweet.get("handle", "")
+        handle = _escape_md(tweet.get("handle", ""))
         bio_zh = _escape_md(_truncate(tweet.get("bio_zh", ""), 80))
         bio_en = _escape_md(_truncate(tweet.get("bio", ""), 80))
         text_en = _escape_md(_truncate(tweet.get("text", ""), 200))
