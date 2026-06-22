@@ -189,7 +189,8 @@ def _push_aihot(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
     if not has_content(daily):
         try:
             daily = fetch_daily()
-        except Exception:
+        except Exception as e:
+            _log(f"[aihot] [warn] fallback fetch failed: {e}", err=True)
             daily = None
 
     if not has_content(daily):
