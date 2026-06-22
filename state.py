@@ -66,6 +66,11 @@ def load_state(path: Path) -> Dict[str, Any]:
     data.setdefault("aihot_failures", 0)
     data.setdefault("last_aihot_entry_date", None)
     data.setdefault("aihot_dead_alerted_on", None)
+    # builders
+    data.setdefault("builders_pushed_date", None)
+    data.setdefault("builders_failures", 0)
+    data.setdefault("last_builders_entry_date", None)
+    data.setdefault("builders_dead_alerted_on", None)
     # 兼容旧字段
     data.setdefault("last_pushed_date", None)
     data.setdefault("consecutive_failures", 0)
@@ -286,3 +291,48 @@ def should_alert_aihot_dead(path: Path, today: date) -> bool:
 
 def mark_aihot_dead_alerted(path: Path, today: date) -> None:
     _mark_dead_alerted(path, "aihot_dead_alerted_on", today)
+
+
+# ———————————— builders 专用 —————————— #
+
+
+def is_builders_pushed_today(path: Path, today: date) -> bool:
+    return _is_pushed(path, "builders_pushed_date", today)
+
+
+def mark_builders_pushed_today(path: Path, today: date) -> None:
+    _mark_pushed(path, "builders_pushed_date", "builders_failures", today)
+
+
+def bump_builders_failure(path: Path) -> int:
+    return _bump_failure(path, "builders_failures")
+
+
+def reset_builders_failure(path: Path) -> None:
+    _reset_failure(path, "builders_failures")
+
+
+def record_builders_entry_date(path: Path, entry_date: date) -> None:
+    data = load_state(path)
+    data["last_builders_entry_date"] = entry_date.isoformat()
+    data["builders_dead_alerted_on"] = None
+    save_state(path, data)
+
+
+def get_last_builders_entry_date(path: Path) -> Optional[date]:
+    return _get_last_entry_date(path, "last_builders_entry_date")
+
+
+def builders_silent_days(path: Path, today: date) -> Optional[int]:
+    last = get_last_builders_entry_date(path)
+    if last is None:
+        return None
+    return max((today - last).days, 0)
+
+
+def should_alert_builders_dead(path: Path, today: date) -> bool:
+    return _should_alert_dead(path, "builders_dead_alerted_on", today)
+
+
+def mark_builders_dead_alerted(path: Path, today: date) -> None:
+    _mark_dead_alerted(path, "builders_dead_alerted_on", today)
