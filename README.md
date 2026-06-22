@@ -230,3 +230,7 @@ python push.py
 ## License
 
 MIT
+
+---
+
+Made by [Ai路人](https://github.com/Houqiluren) · 动态设计师出身，用 AI 做设计提效和知识分享
