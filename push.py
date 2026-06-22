@@ -1,6 +1,6 @@
 """每日推送主流程。
 
-顺序：aihot 先，juya 后。两个源独立去重/告警。
+顺序：aihot 先，juya 后，builders 最后。三个源独立去重/告警。
 """
 import os
 import sys
@@ -11,20 +11,27 @@ import pytz
 
 from aihot import AIHOT_BASE_URL, daily_date, fetch_daily, has_content, total_items
 from aihot_card import parse_daily_to_card
+from builders import fetch_daily as builders_fetch_daily
+from builders_card import build_card_payload as builders_build_card
 from lark import send_lark_card, send_lark_text
 from lark_card import parse_entry_to_card
 from rss import extract_today_entry, fetch_rss
 from state import (
-    aihot_silent_days, bump_aihot_failure, bump_failure,
-    get_last_aihot_entry_date, get_last_juya_entry_date,
-    is_aihot_pushed_today, is_pushed_today,
+    aihot_silent_days, bump_aihot_failure, bump_builders_failure, bump_failure,
+    builders_silent_days,
+    get_last_aihot_entry_date, get_last_builders_entry_date,
+    get_last_juya_entry_date,
+    is_aihot_pushed_today, is_builders_pushed_today, is_pushed_today,
     juya_silent_days,
     mark_aihot_dead_alerted, mark_aihot_pushed_today,
+    mark_builders_dead_alerted, mark_builders_pushed_today,
     mark_juya_dead_alerted, mark_juya_degraded_alerted,
     mark_pushed_today,
-    record_aihot_entry_date, record_juya_entry_date,
-    reset_aihot_failure, reset_failure,
-    should_alert_aihot_dead, should_alert_juya_dead,
+    record_aihot_entry_date, record_builders_entry_date,
+    record_juya_entry_date,
+    reset_aihot_failure, reset_builders_failure, reset_failure,
+    should_alert_aihot_dead, should_alert_builders_dead,
+    should_alert_juya_dead,
     should_alert_juya_degraded,
 )
 
@@ -239,6 +246,65 @@ def _push_aihot(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
         return False
 
 
+def _push_builders(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
+                   today: date, backfill: bool) -> bool:
+    """推送 follow-builders 推文动态，返回 True=正常结束，False=失败"""
+    # 去重
+    if not backfill and is_builders_pushed_today(STATE_PATH, today):
+        _log(f"[builders] [skip] already pushed today ({today})")
+        return True
+
+    # 拉取 + 翻译
+    try:
+        daily = builders_fetch_daily()
+    except Exception as e:
+        _log(f"[builders] [warn] fetch failed: {e}", err=True)
+        if backfill:
+            return False
+        n = bump_builders_failure(STATE_PATH)
+        if n >= 3:
+            _alert(ops_webhook, ops_secret, f"⚠️ builders 连续 {n} 次拉取失败\n错误: {e}")
+            reset_builders_failure(STATE_PATH)
+        return False
+
+    if not daily or not daily.get("tweets"):
+        _log(f"[builders] [skip] no content for {today}")
+        if not backfill:
+            silent = builders_silent_days(STATE_PATH, today)
+            if silent and silent >= DEAD_THRESHOLD and should_alert_builders_dead(STATE_PATH, today):
+                last = get_last_builders_entry_date(STATE_PATH)
+                _alert(ops_webhook, ops_secret,
+                       f"⚠️ follow-builders 连续 {silent} 天未更新（最后: {last}）\n"
+                       "https://github.com/zarazhangrui/follow-builders")
+                mark_builders_dead_alerted(STATE_PATH, today)
+        return True
+
+    # 记录日期
+    entry_date = daily.get("date")
+    if entry_date and not backfill:
+        record_builders_entry_date(STATE_PATH, entry_date)
+
+    # 渲染推送
+    try:
+        card = builders_build_card(daily)
+        send_lark_card(webhook, secret, card)
+        if not backfill:
+            mark_builders_pushed_today(STATE_PATH, today)
+        _log(f"[builders] [ok] pushed {today} ({len(daily.get('tweets', []))} 条推文)")
+        return True
+
+    except Exception as e:
+        if backfill:
+            _log(f"[builders] [fail] backfill: {e}", err=True)
+            return False
+        n = bump_builders_failure(STATE_PATH)
+        _log(f"[builders] [fail] ({n}/3): {e}", err=True)
+        if n >= 3:
+            _alert(ops_webhook, ops_secret, f"⚠️ builders 推送连续 {n} 次失败\n错误: {e}")
+            reset_builders_failure(STATE_PATH)
+        return False
+
+
 def main() -> int:
     _check_env()
     webhook = os.environ["LARK_WEBHOOK_URL"]
@@ -252,8 +318,9 @@ def main() -> int:
 
     aihot_ok = _push_aihot(webhook, secret, ops_webhook, ops_secret, today, backfill)
     juya_ok = _push_juya(webhook, secret, ops_webhook, ops_secret, today, backfill)
+    builders_ok = _push_builders(webhook, secret, ops_webhook, ops_secret, today, backfill)
 
-    if aihot_ok and juya_ok:
+    if aihot_ok and juya_ok and builders_ok:
         _log("[meta] all completed")
         return 0
     _log("[meta] some failed", err=True)
