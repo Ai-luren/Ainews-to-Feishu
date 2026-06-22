@@ -12,7 +12,7 @@ import pytz
 from aihot import AIHOT_BASE_URL, daily_date, fetch_daily, has_content, total_items
 from aihot_card import parse_daily_to_card
 from builders import fetch_daily as builders_fetch_daily
-from builders_card import build_card_payload as builders_build_card
+from builders_card import render_card as builders_render_card
 from lark import send_lark_card, send_lark_text
 from lark_card import parse_entry_to_card
 from rss import extract_today_entry, fetch_rss
@@ -286,7 +286,7 @@ def _push_builders(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
 
     # 渲染推送
     try:
-        card = builders_build_card(daily)
+        card = builders_render_card(daily)
         send_lark_card(webhook, secret, card)
         if not backfill:
             mark_builders_pushed_today(STATE_PATH, today)
