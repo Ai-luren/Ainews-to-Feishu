@@ -1,61 +1,101 @@
-# AI 每日早报 → 飞书（juya + aihot 双源）
+# AI 每日早报推送系统
 
-每天从两个来源抓取 AI 资讯，各自独立解析为飞书卡片，推送到同一个群组。
+自动聚合 [橘鸦 AI 早报](https://daily.juya.uk/) 和 [AI HOT](https://aihot.virxact.com/) 两个源的 AI 资讯，解析成飞书卡片，每天上午定时推送到飞书群。
 
-| 源 | 说明 | 位置 |
-|---|---|---|
-| juya | `https://daily.juya.uk/rss.xml`，解析 HTML 内容 | rss.py + lark_card.py |
-| aihot | `https://aihot.virxact.com/api/public/daily`，原生 JSON | aihot.py + aihot_card.py |
+## 它做什么
 
-**调度**：cron-job.org（外部定时器，更准时）每 30 分钟触发一次，北京时间 08:00/08:30/09:00/09:30/10:00/10:30，共 6 次。GitHub Actions 的 `schedule` 只保留北京 11:00 一次作为兜底。
-**去重**：每个源独立记录 pushed_date，当天任一源推送成功后，该源后续 cron 自动跳过。飞书群每天最多收到 2 条卡片（aihot + juya）。
+- 每天上午 8:00-11:30，每 30 分钟检查一次两个源是否有新内容
+- juya 有新日报 → 解析 RSS 里的 HTML 概览，渲染成飞书卡片推送
+- aihot 有新日报 → 解析 JSON API，渲染成飞书卡片推送
+- 两个源独立去重，当天推过就不再重复
+- 解析失败自动降级，11:00 后仍失败则发带链接的文本兜底
+- 连续 3 次失败或 3 天没更新 → 自动告警到运维群
 
----
+## 效果
 
-## 快速一览
+飞书群每天上午收到 2 条卡片消息：
 
-| 项 | 值 |
+```
+🤖 橘鸦 AI 早报 · 2026-06-21
+  要闻
+  • Codex 宣布支持本地与远程主机间交接会话 ↗
+  • Anthropic 修复 Claude Code 额度异常 bug ↗
+  ...
+  [📖 查看完整日报] [🎬 B站]
+
+🔥 AI HOT 日报 · 2026-06-21（15 条）
+  大模型
+  • GPT-5 发布 ...
+  ...
+  [📖 查看完整日报]
+```
+
+## 快速部署
+
+### 1. Fork 这个仓库
+
+### 2. 在飞书群里建自定义机器人
+
+群设置 → 群机器人 → 添加机器人 → **自定义机器人** → 勾选**签名校验**
+
+拿到 webhook URL 和签名 secret。
+
+### 3. 设置 GitHub Secrets
+
+仓库 Settings → Secrets and variables → Actions → New repository secret，添加 4 个：
+
+| Secret 名称 | 值 |
 |---|---|
-| 信息源 | juya RSS + aihot JSON API（两个独立流程）|
-| 推送目标 | Feishu 自定义机器人（两个源推到同一个群）|
-| 调度方式 | GitHub Actions `schedule`（UTC `0,30 1,2 * * *` = 北京 09:00–10:30，每 30 分钟）|
-| 语言 | Python 3.11 |
-| 测试 | `pytest`，72 个测试，预期全绿 |
-| 状态文件 | `state.json`（按源独立记录推送日期、失败计数、最新条目日期）|
+| `LARK_WEBHOOK_URL` | 飞书机器人 webhook URL |
+| `LARK_WEBHOOK_SECRET` | 签名 secret |
+| `LARK_OPS_WEBHOOK_URL` | 运维告警 webhook（可以和上面同一个）|
+| `LARK_OPS_WEBHOOK_SECRET` | 运维告警 secret（可以和上面同一个）|
 
----
+### 4. 设置定时调度（二选一）
+
+**方案 A：cron-job.org（推荐，准时）**
+
+1. 去 [cron-job.org](https://cron-job.org) 注册，创建 cronjob
+2. URL 填：`https://api.github.com/repos/<你的用户名>/design-team-ai-daily/actions/workflows/daily-ai-news.yml/dispatches`
+3. Method: `POST`
+4. Headers: `Authorization: Bearer <你的GitHub PAT>` / `Accept: application/vnd.github+json` / `Content-Type: application/json`
+5. Body: `{"ref":"master","inputs":{"target_date":""}}`
+6. 时区: `Asia/Shanghai`
+7. Crontab: `*/30 8-11 * * *`（北京时间 8:00-11:30，每 30 分钟）
+
+**方案 B：只用 GitHub Actions（简单，但可能延迟 1-2 小时）**
+
+仓库已经配好了 `schedule`，北京时间 12:00 兜底跑一次。如果 juya 在上午发布，这个时间够用。
+
+### 5. 验证
+
+GitHub → Actions → `daily-ai-news-push` → Run workflow → 留空 → 看飞书群是否收到卡片。
 
 ## 项目结构
 
 ```
-.
-├── push.py              # 主入口：依次调 _push_juya() + _push_aihot()，各独立去重/告警
-├── rss.py               # juya：RSS 抓取 + 当天条目提取
-├── aihot.py             # aihot：JSON API 拉取 + 内容判空
-├── lark.py              # Feishu webhook：签名 + POST（两个源共用）
-├── lark_card.py         # juya 卡片渲染
-├── aihot_card.py        # aihot 卡片渲染
-├── state.py             # state.json 原子读写；按源拆分字段，互不污染
-├── state.json           # 运行状态（由 workflow 自动 commit 回仓库）
-├── requirements.txt     # feedparser, requests, beautifulsoup4, pytz
-├── pytest.ini
-├── .github/workflows/
-│   └── daily-ai-news.yml  # cron + workflow_dispatch
-└── tests/               # 单元测试（juya 流程覆盖）
+push.py          # 主入口：先推 aihot，再推 juya
+rss.py           # juya RSS 抓取 + 当天条目提取
+aihot.py         # aihot JSON API 拉取
+lark.py          # 飞书 webhook 签名 + POST
+lark_card.py     # juya 卡片渲染（HTML → 飞书卡片）
+aihot_card.py    # aihot 卡片渲染（JSON → 飞书卡片）
+state.py         # 推送状态管理（去重、失败计数、停更告警）
+state.json       # 运行状态（workflow 自动 commit）
+tests/           # 88 个测试
+.github/workflows/daily-ai-news.yml  # GitHub Actions 调度
 ```
 
----
-
-## 它是怎么工作的
+## 工作流程
 
 ```mermaid
 flowchart TB
-    subgraph 调度["调度层"]
-        C1[cron-job.org<br/>08:00-10:30 每30分钟]
-        C2[GitHub Actions<br/>11:00 兜底]
+    subgraph 调度["调度"]
+        C1[cron-job.org<br/>08:00-11:30 每30分钟]
+        C2[GitHub Actions<br/>12:00 兜底]
     end
 
-    subgraph 推送["推送层"]
+    subgraph 推送["推送"]
         P[python push.py]
         A[_push_aihot]
         J[_push_juya]
@@ -66,146 +106,52 @@ flowchart TB
         J1[juya RSS<br/>XML]
     end
 
-    subgraph 状态["状态管理"]
-        S[state.json]
-    end
-
     subgraph 输出["输出"]
         F[飞书群]
     end
 
-    C1 -->|POST workflow_dispatch| P
+    C1 -->|POST| P
     C2 -->|schedule| P
-    P --> A
-    P --> J
-    A -->|fetch_daily| A1
-    J -->|fetch_rss| J1
-    A -->|检查 pushed_date| S
-    J -->|检查 pushed_date| S
-    A -->|send_lark_card| F
-    J -->|send_lark_card| F
-    A -->|更新 state| S
-    J -->|更新 state| S
+    P --> A --> A1
+    P --> J --> J1
+    A -->|卡片| F
+    J -->|卡片| F
 ```
-
-**推送时序**（cron-job.org，北京时间）：08:00 → 08:30 → 09:00 → 09:30 → 10:00 → 10:30
-**兜底**：GitHub Actions 每天 11:00 再跑一次（cron-job.org 万一挂了也能兜底推一次）
-
----
-
-## cron-job.org 配置（主调度器）
-
-登录 cron-job.org → Create cronjob，填入以下值：
-
-| 项 | 值 |
-|---|---|
-| **Title** | `ai-news-daily-push` |
-| **URL** | `https://api.github.com/repos/<你的用户名>/design-team-ai-daily/actions/workflows/daily-ai-news.yml/dispatches` |
-| **Method** | `POST` |
-| **Header 1 - Name** | `Authorization` |
-| **Header 1 - Value** | `Bearer <你的 GitHub PAT>` |
-| **Header 2 - Name** | `Accept` |
-| **Header 2 - Value** | `application/vnd.github.v3+json` |
-| **Header 3 - Name** | `Content-Type` |
-| **Header 3 - Value** | `application/json` |
-| **Body / POST data** | `{"ref":"master","inputs":{"target_date":""}}` |
-| **Execution time / Timezone** | `Asia/Shanghai`（选这个时区，填的就是北京时间）|
-| **Schedule** | 每 30 分钟一次：08:00、08:30、09:00、09:30、10:00、10:30（勾这 6 个小时/分钟） |
-
-> **为什么用 cron-job.org**：GitHub Actions 的 `schedule` 在 UTC 01:00-02:30（北京 09:00-10:30）经常排队延迟 2-5 小时，cron-job.org 的准时性好得多。
-
----
-
-## 部署（只做一次）
-
-### 需要的 Secrets（GitHub → Settings → Secrets and variables → Actions）
-
-| Secret 名称 | 值 |
-|---|---|
-| `LARK_WEBHOOK_URL` | 飞书自定义机器人的 webhook URL |
-| `LARK_WEBHOOK_SECRET` | 飞书机器人的签名密钥（勾选"签名校验"后生成）|
-| `LARK_OPS_WEBHOOK_URL` | **和上面同一个 URL**（运维告警发到同一个群）|
-| `LARK_OPS_WEBHOOK_SECRET` | **和上面同一个 secret** |
-
-> 想把"早报"和"告警"分到两个群？改上面 4 个值即可，代码不改。
-
-### 测试是否正常
-
-GitHub → Actions → 选择 `daily-ai-news-push` → 点「Run workflow」→ 留空 = 推送今天。
-
----
-
-## 日常运维（常见问题）
-
-### 1. 今天没收到？
-
-去 `Actions` 页面看最新的 run 日志，搜关键词：
-
-| 日志关键词 | 含义 | 怎么办 |
-|---|---|---|
-| `[juya] [skip] already pushed today` | juya 今天已推过 | 等明天 |
-| `[aihot] [skip] already pushed today` | aihot 今天已推过 | 等明天 |
-| `[juya] [skip] juya not updated` | juya 还没发今天的 | 等下一个 cron |
-| `[aihot] [skip] aihot no content` | aihot 今天没内容 | 等明天 |
-| `[fail] push attempt failed (N/3)` | 推送失败，重试中 | 检查飞书机器人是否活着 |
-| `[ok] pushed` | 已推送，看飞书群 | 正常 |
-
-### 2. 想改推送时间
-
-编辑 `.github/workflows/daily-ai-news.yml` 里的 `cron`。
-
-**规则**：cron 写 **UTC 时间**，北京时间 = UTC + 8 小时。
-
-当前配置 `'0,30 1,2 * * *'`：UTC 01:00/01:30/02:00/02:30 → 北京 09:00/09:30/10:00/10:30。
-
-改完 `git push`，生效需要一点时间（GitHub Actions 刷新配置）。
-
-### 3. 想补发某一天
-
-GitHub → Actions → `daily-ai-news-push` → 「Run workflow」→ 填 `YYYY-MM-DD`，留空 = 今天。
-
-补发模式不会写入状态（`last_pushed_date` 不变），所以可以反复跑。
-
-### 4. 想停掉 / 暂停
-
-GitHub → Actions → 选中 `daily-ai-news-push` → 右上 `···` → `Disable workflow`。随时可 Enable 回来。
-
-### 5. 某个源的 URL 改了怎么办
-
-| 源 | 改哪里 |
-|---|---|
-| juya RSS | `rss.py` 中的 `_RSS_URL_DEFAULT`（默认值）；代码已兜底：若配置为旧的 `imjuya.github.io` 会自动回退到默认值 |
-| aihot API | `aihot.py` 中的 `AIHOT_BASE_URL` + `AIHOT_DAILY_ENDPOINT` |
-
----
 
 ## 本地开发
 
 ```bash
 pip install -r requirements.txt
-pytest -v           # 跑测试（72 个，应全绿）
+pytest -v                    # 88 个测试，应全绿
 
-# 想本地跑一次推送：
-export LARK_WEBHOOK_URL="你的 URL"
-export LARK_WEBHOOK_SECRET="你的 secret"
+# 本地跑一次推送：
+export LARK_WEBHOOK_URL="你的URL"
+export LARK_WEBHOOK_SECRET="你的secret"
 export LARK_OPS_WEBHOOK_URL="同上"
 export LARK_OPS_WEBHOOK_SECRET="同上"
 python push.py
 ```
 
----
+## 容错机制
 
-## 外部依赖（都不可控，挂了会自动告警）
+| 场景 | 行为 |
+|---|---|
+| 源头还没发今天的 | skip，等下一个 cron |
+| 卡片解析失败（11:00 前） | 不标记已推送，运维群告警，等下一个 cron 重试 |
+| 卡片解析失败（11:00 后） | 发带链接的文本到主群（最终兜底） |
+| 连续 3 次拉取失败 | 运维群告警，重置计数 |
+| 连续 3 天没更新 | 运维群告警"停更" |
+| 飞书 webhook 失效 | 连续 3 次失败后告警 |
 
-| 依赖 | 用途 | 风险 |
-|---|---|---|
-| `daily.juya.uk` | juya 信息源 RSS | 停更 → 3 天后告警；改 URL → 手动更新 `rss.py` 中 `_RSS_URL_DEFAULT` |
-| `aihot.virxact.com` | aihot 信息源 JSON API | 停更 → 3 天后告警；改 URL → 手动更新 `aihot.py` 中 `AIHOT_BASE_URL` |
-| GitHub Actions | 调度 + 执行 | 免费额度够用；历史上极少宕机 |
-| Feishu / Lark 开放平台 | 推送通道 | webhook URL 失效 / 机器人被删 → 连续 3 次失败后告警 |
+## 外部依赖
 
----
+| 依赖 | 用途 |
+|---|---|
+| `daily.juya.uk` | juya AI 早报 RSS |
+| `aihot.virxact.com` | aihot 日报 JSON API |
+| GitHub Actions | 调度 + 执行 |
+| 飞书开放平台 | 推送通道 |
 
-## 对 AI 的一句话说明（给 LLM 看的）
+## License
 
-> 这是一个"RSS/JSON → 飞书"双源推送器。入口是 `.github/workflows/daily-ai-news.yml` 的 `schedule`，执行 `push.py`。`push.py` 依次调两个独立函数 `_push_juya()` 和 `_push_aihot()`，各自有独立的去重逻辑、失败计数和停更告警（字段前缀 `juya_` / `aihot_` 写在同一个 `state.json` 中，互不污染）。两个源共用 `lark.py` 的飞书 POST。状态存在仓库根的 `state.json`，每次运行后由 workflow 自动 commit 回去。没有数据库、缓存、外部服务。测试用 `pytest`，72 个测试覆盖 juya 主流程（aihot 流程用相同骨架，测试由 aihot 专项覆盖）。复刻步骤：1) 复制文件结构 2) 设 4 个飞书 secrets 3) 确认 cron 时区正确。
+MIT
