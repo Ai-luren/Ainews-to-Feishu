@@ -44,7 +44,7 @@ def lark_sign(secret: str, timestamp: int) -> str:
 def _post_json(webhook: str, payload: Mapping[str, Any], timeout: int) -> Mapping[str, Any]:
     """共用的飞书 webhook POST：处理非 200 / 非 JSON / 业务 code != 0 三种失败。"""
     if not webhook or not webhook.startswith(("http://", "https://")):
-        raise ValueError(f"invalid webhook: {webhook!r}")
+        raise ValueError(f"invalid webhook (scheme not http/https, got: {webhook[:30]!r}...)")
     with _session() as s:
         resp = s.post(webhook, json=payload, timeout=timeout)
     if resp.status_code != 200:
