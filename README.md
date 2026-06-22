@@ -1,19 +1,20 @@
 # AI 每日早报推送系统
 
-自动聚合 [橘鸦 AI 早报](https://daily.juya.uk/) 和 [AI HOT](https://aihot.virxact.com/) 两个源的 AI 资讯，解析成飞书卡片，每天上午定时推送到飞书群。
+自动聚合 [橘鸦 AI 早报](https://daily.juya.uk/)、[AI HOT](https://aihot.virxact.com/) 和 [follow-builders](https://github.com/zarazhangrui/follow-builders) 三个源的 AI 资讯，解析成飞书卡片，每天定时推送到飞书群。
 
 ## 它做什么
 
-- 每天上午 8:00-12:30，每 30 分钟检查一次两个源是否有新内容
+- 每天上午 8:00-14:30，每 30 分钟检查一次三个源是否有新内容
 - juya 有新日报 → 解析 RSS 里的 HTML 概览，渲染成飞书卡片推送
 - aihot 有新日报 → 解析 JSON API，渲染成飞书卡片推送
-- 两个源独立去重，当天推过就不再重复
+- builders 有新推文 → 拉取 AI 大佬动态，Google 翻译成中文，中英双语推送
+- 三个源独立去重，当天推过就不再重复
 - 解析失败自动降级，11:00 后仍失败则发带链接的文本兜底
 - 连续 3 次失败或 3 天没更新 → 自动告警到运维群
 
 ## 效果
 
-飞书群每天上午收到 2 条卡片消息：
+飞书群每天上午收到 3 条卡片消息：
 
 ### 橘鸦 AI 早报
 
@@ -22,6 +23,10 @@
 ### AI HOT 日报
 
 ![aihot card](assets/aihot-card.png)
+
+### AI 大佬动态（中英双语）
+
+来自 follow-builders 的 AI 大佬推文，按互动量排序取 Top 10，中文由 Google Translate 自动翻译，英文原文同步展示。
 
 ## 快速部署
 
@@ -75,7 +80,7 @@
   - `Content-Type: application/json`
 - **Body**: `{"ref":"master","inputs":{"target_date":""}}`
 - **Execution time / Timezone**: `Asia/Shanghai`
-- **Schedule**: Crontab 填 `*/30 8-12 * * *`
+- **Schedule**: Crontab 填 `*/30 8-14 * * *`
 - 点 "TEST RUN" → 返回 204 就是成功
 - 点 "CREATE"
 
@@ -103,12 +108,14 @@
 ## 项目结构
 
 ```
-push.py          # 主入口：先推 aihot，再推 juya
+push.py          # 主入口：先推 aihot，再推 juya，最后推 builders
 rss.py           # juya RSS 抓取 + 当天条目提取
 aihot.py         # aihot JSON API 拉取
+builders.py      # follow-builders feed 拉取 + Google 翻译
 lark.py          # 飞书 webhook 签名 + POST
 lark_card.py     # juya 卡片渲染（HTML → 飞书卡片）
 aihot_card.py    # aihot 卡片渲染（JSON → 飞书卡片）
+builders_card.py # builders 卡片渲染（中英双语）
 state.py         # 推送状态管理（去重、失败计数、停更告警）
 state.json       # 运行状态（workflow 自动 commit）
 tests/           # 88 个测试
@@ -120,19 +127,22 @@ tests/           # 88 个测试
 ```mermaid
 flowchart TB
     subgraph 调度["🕐 调度层"]
-        C1["cron-job.org<br/>08:00-12:30 每30分钟"]
-        C2["GitHub Actions<br/>12:00 兜底"]
+        C1["cron-job.org<br/>08:00-14:30 每30分钟"]
+        C2["GitHub Actions<br/>15:00 兜底"]
     end
 
     subgraph 推送["⚙️ 推送层"]
         P["push.py<br/>主入口"]
         A["aihot.py → aihot_card.py<br/>JSON → 卡片"]
         J["rss.py → lark_card.py<br/>XML → 卡片"]
+        B["builders.py → builders_card.py<br/>Feed → 中英双语卡片"]
     end
 
     subgraph 数据["📡 数据源"]
         A1["aihot API<br/>JSON"]
         J1["juya RSS<br/>XML"]
+        B1["follow-builders<br/>GitHub JSON"]
+        T["Google Translate<br/>英文→中文"]
     end
 
     subgraph 输出["📱 输出"]
@@ -143,16 +153,22 @@ flowchart TB
     C2 -->|"定时触发"| P
     P --> A
     P --> J
+    P --> B
     A --> A1
     J --> J1
+    B --> B1
+    B -->|"翻译"| T
     A -->|"卡片"| F
     J -->|"卡片"| F
+    B -->|"双语卡片"| F
 
     style C1 fill:#e1f5fe,stroke:#0288d1
     style C2 fill:#e3f2fd,stroke:#1976d2
     style P fill:#fff3e0,stroke:#f57c00
     style A fill:#e8f5e9,stroke:#388e3c
     style J fill:#e8f5e9,stroke:#388e3c
+    style B fill:#f3e5f5,stroke:#7b1fa2
+    style T fill:#fff9c4,stroke:#f9a825
     style F fill:#fce4ec,stroke:#c62828
 ```
 
@@ -194,7 +210,7 @@ flowchart LR
 | 09:00-10:30 | 降级 → 告警（只发1次）→ 不标记 → 等重试 |
 | 11:00 | 降级 → **发文本到主群**（带链接）→ 标记已推送 |
 | 11:30 | skip（已推送） |
-| 12:00 | GitHub Actions 兜底 → skip |
+| 15:00 | GitHub Actions 兜底 → skip |
 
 ## 本地开发
 
@@ -224,6 +240,8 @@ python push.py
 |---|---|
 | `daily.juya.uk` | juya AI 早报 RSS |
 | `aihot.virxact.com` | aihot 日报 JSON API |
+| `follow-builders` (GitHub) | AI 大佬推文 feed |
+| `translate.googleapis.com` | Google 免费翻译（英文→中文） |
 | GitHub Actions | 调度 + 执行 |
 | 飞书开放平台 | 推送通道 |
 
