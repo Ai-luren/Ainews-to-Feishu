@@ -105,9 +105,9 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
     if lead_title or lead_paragraph:
         lead_md = []
         if lead_title:
-            lead_md.append(f"**{_truncate(lead_title, 150)}**")
+            lead_md.append(f"**{_escape_md(_truncate(lead_title, 150))}**")
         if lead_paragraph:
-            lead_md.append(_truncate(lead_paragraph, 300))
+            lead_md.append(_escape_md(_truncate(lead_paragraph, 300)))
         if lead_md:
             elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lead_md)}})
 
@@ -120,9 +120,9 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
             line = f"• [{_escape_md(_truncate(item['title'], 100))}]({_safe_url(item['url'])})"
             md_lines.append(line)
             if item.get("summary"):
-                md_lines.append(f"  {_truncate(item['summary'], 120)}")
+                md_lines.append(f"  {_escape_md(_truncate(item['summary'], 120))}")
             if item.get("source"):
-                md_lines.append(f"  — {item['source']}")
+                md_lines.append(f"  — {_escape_md(item['source'])}")
         elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(md_lines)}})
 
     # 快讯（如有）
@@ -135,7 +135,7 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
             flash_url = _s(f.get("sourceUrl"))
             if not flash_title or not flash_url:
                 continue
-            flash_lines.append(f"• [{_truncate(flash_title, 150)}]({flash_url})")
+            flash_lines.append(f"• [{_escape_md(_truncate(flash_title, 150))}]({_safe_url(flash_url)})")
         if len(flash_lines) > 1:
             elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(flash_lines)}})
 
