@@ -5,9 +5,7 @@
 - 底部 action 按钮
 - note 声明来源
 """
-from typing import Any, Dict, List, Optional
-
-from builders import fetch_daily
+from typing import Any, Dict, List
 
 
 def _s(v) -> str:
@@ -125,16 +123,3 @@ def render_card(daily: dict) -> dict:
         },
         "elements": elements,
     }
-
-
-def build_card_payload(daily: dict) -> dict:
-    """构建飞书 webhook 消息体。"""
-    return {"msg_type": "interactive", "card": render_card(daily)}
-
-
-def parse_entry_to_card() -> Optional[dict]:
-    """一站式：拉取 + 渲染。失败返回 None。"""
-    daily = fetch_daily()
-    if not daily or not daily.get("tweets"):
-        return None
-    return build_card_payload(daily)
