@@ -9,6 +9,13 @@ import requests
 
 USER_AGENT = "ainews-to-feishu/1.0 (+https://github.com/ainews-to-feishu)"
 
+# 飞书 webhook 频率限制：同一 webhook 1 分钟内最多 5 条消息。
+# 超过会返回 code=11232 msg="frequency limited"。
+# 限流后等待 30 秒重试，最多重试 2 次。
+_RATE_LIMIT_CODE = 11232
+_RATE_LIMIT_RETRIES = 2
+_RATE_LIMIT_WAIT = 30  # 秒
+
 
 def _session() -> requests.Session:
     """单次 HTTP session（不做 POST 自动重试，避免非幂等请求重复推送）。"""
@@ -42,20 +49,33 @@ def lark_sign(secret: str, timestamp: int) -> str:
 
 
 def _post_json(webhook: str, payload: Mapping[str, Any], timeout: int) -> Mapping[str, Any]:
-    """共用的飞书 webhook POST：处理非 200 / 非 JSON / 业务 code != 0 三种失败。"""
+    """共用的飞书 webhook POST：处理非 200 / 非 JSON / 业务 code != 0 三种失败。
+
+    遇到频率限制（code=11232）时自动等待 30 秒重试，最多重试 2 次。
+    """
     if not webhook or not webhook.startswith(("http://", "https://")):
         raise ValueError(f"invalid webhook (scheme not http/https, got: {webhook[:30]!r}...)")
-    with _session() as s:
-        resp = s.post(webhook, json=payload, timeout=timeout)
-    if resp.status_code != 200:
-        raise RuntimeError(f"lark http {resp.status_code}: {resp.text[:200]}")
-    try:
-        data = resp.json()
-    except json.JSONDecodeError as e:
-        raise RuntimeError(f"lark 响应不是 JSON（http 200 但 body={resp.text[:200]!r}）") from e
-    if not isinstance(data, dict) or data.get("code", 0) != 0:
-        raise RuntimeError(f"lark error code={data.get('code')} msg={data.get('msg')}")
-    return data
+
+    for attempt in range(_RATE_LIMIT_RETRIES + 1):
+        with _session() as s:
+            resp = s.post(webhook, json=payload, timeout=timeout)
+        if resp.status_code != 200:
+            raise RuntimeError(f"lark http {resp.status_code}: {resp.text[:200]}")
+        try:
+            data = resp.json()
+        except json.JSONDecodeError as e:
+            raise RuntimeError(f"lark 响应不是 JSON（http 200 但 body={resp.text[:200]!r}）") from e
+
+        if not isinstance(data, dict) or data.get("code", 0) != 0:
+            # 频率限制：等待后重试
+            if data.get("code") == _RATE_LIMIT_CODE and attempt < _RATE_LIMIT_RETRIES:
+                print(f"[lark] 频率限制，{_RATE_LIMIT_WAIT}s 后重试 ({attempt+1}/{_RATE_LIMIT_RETRIES})", flush=True)
+                time.sleep(_RATE_LIMIT_WAIT)
+                continue
+            raise RuntimeError(f"lark error code={data.get('code')} msg={data.get('msg')}")
+        return data
+
+    raise RuntimeError("lark 频率限制，重试次数已用完")
 
 
 def send_lark_text(webhook: str, secret: str, text: str, timeout: int = 10) -> None:
