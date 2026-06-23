@@ -154,25 +154,27 @@ def test_duplicate_push_skipped(fresh_state: Path, mock_env, monkeypatch):
 
 def test_cron_job_org_schedule_validation():
     """验证 cron-job.org 的 crontab 配置。"""
-    # crontab: */30 8-10 * * *
+    # crontab: */30 8-14 * * *
     # 应该在以下时间触发（北京时间）：
-    expected_times = ["08:00", "08:30", "09:00", "09:30", "10:00", "10:30"]
+    expected_times = [
+        "08:00", "08:30", "09:00", "09:30", "10:00", "10:30",
+        "11:00", "11:30", "12:00", "12:30", "13:00", "13:30",
+        "14:00", "14:30",
+    ]
 
-    # 验证 crontab 表达式解析正确
-    import re
-    crontab = "*/30 8-10 * * *"
+    crontab = "*/30 8-14 * * *"
     parts = crontab.split()
 
     # 分钟: */30 = 0, 30
     assert parts[0] == "*/30"
 
-    # 小时: 8-10 = 8, 9, 10
+    # 小时: 8-14 = 8, 9, 10, 11, 12, 13, 14
     hours = parts[1]
-    assert hours == "8-10"
+    assert hours == "8-14"
 
     # 计算实际触发时间
     actual_times = []
-    for h in range(8, 11):  # 8, 9, 10
+    for h in range(8, 15):  # 8 到 14
         for m in [0, 30]:
             actual_times.append(f"{h:02d}:{m:02d}")
 
@@ -181,12 +183,10 @@ def test_cron_job_org_schedule_validation():
 
 def test_github_actions_fallback_schedule():
     """验证 GitHub Actions 兜底 schedule 配置。"""
-    # workflow 中的 cron: '0 3 * * *'
-    # UTC 03:00 = 北京时间 11:00
+    # workflow 中的 cron: '0 7 * * *'
+    # UTC 07:00 = 北京时间 15:00
 
-    from datetime import timedelta
-
-    utc_hour = 3
+    utc_hour = 7
     beijing_hour = (utc_hour + 8) % 24  # UTC+8
 
-    assert beijing_hour == 11, f"北京时间应该是 11:00，实际是 {beijing_hour}"
+    assert beijing_hour == 15, f"北京时间应该是 15:00，实际是 {beijing_hour}"
