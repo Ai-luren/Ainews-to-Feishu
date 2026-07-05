@@ -49,6 +49,8 @@ def _escape_md(text: str) -> str:
 def _truncate(text: str, limit: int) -> str:
     """超长截断并加省略号，截断后总长度 = limit（含省略号）。"""
     text = _s(text)
+    if limit <= 0:
+        return ""
     if len(text) <= limit:
         return text
     return text[: limit - 1] + "…"

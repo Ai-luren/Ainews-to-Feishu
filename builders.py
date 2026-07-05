@@ -3,7 +3,6 @@
 从 follow-builders 仓库拉取每日 AI 大佬推文 feed，
 按互动量排序取 Top N，翻译成中文，返回结构化数据。
 """
-import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
@@ -21,8 +20,6 @@ FEED_URL = (
 )
 USER_AGENT = "ainews-to-feishu/1.0 (+https://github.com/Ai-luren/ainews-to-feishu)"
 MAX_TWEETS = 10  # 只取互动量最高的 10 条
-
-_log = logging.getLogger(__name__)
 
 
 def _session() -> requests.Session:

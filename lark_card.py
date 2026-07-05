@@ -6,24 +6,14 @@ from bs4 import BeautifulSoup
 from card_utils import _escape_md, _safe_url, _s
 
 
-# juya 分类集合。保留映射用于兼容现有分类测试和未来分区样式。
-CATEGORY_HEADER_TEMPLATE: Dict[str, str] = {
-    "要闻": "indigo",
-    "大模型与基础模型": "blue",
-    "应用与产品": "turquoise",
-    "研究与论文": "purple",
-    "政策与行业动态": "yellow",
-    "开源与工程": "green",
-    "硬件与芯片": "orange",
-    "产品发布": "wathet",
-    "安全与对齐": "red",
-    "人物与公司": "carmine",
-}
-DEFAULT_HEADER_TEMPLATE = "purple"
 JUYA_HEADER_TEMPLATE = "orange"
 
-# 兼容别名 —— 测试里用 CATEGORY_COLORS 来遍历所有已知分类
-CATEGORY_COLORS = tuple(CATEGORY_HEADER_TEMPLATE.keys())
+# juya 已知分类名，测试里用来遍历断言
+CATEGORY_COLORS = (
+    "要闻", "大模型与基础模型", "应用与产品", "研究与论文",
+    "政策与行业动态", "开源与工程", "硬件与芯片", "产品发布",
+    "安全与对齐", "人物与公司",
+)
 
 
 def _extract_overview_groups(html: str) -> List[Dict[str, Any]]:

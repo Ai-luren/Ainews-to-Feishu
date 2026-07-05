@@ -1,9 +1,12 @@
+from pathlib import Path
 from rss import parse_feed
 from lark_card import parse_entry_to_card, CATEGORY_COLORS
 
+FIXTURE = Path("tests/fixtures/juya_sample.xml")
+
 
 def load_latest_entry():
-    return parse_feed(open("tests/fixtures/juya_sample.xml").read())[0]
+    return parse_feed(FIXTURE.read_text())[0]
 
 
 def test_card_has_header_with_date():

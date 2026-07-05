@@ -78,8 +78,7 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
             lead_md.append(f"**{_escape_md(_truncate(lead_title, 150))}**")
         if lead_paragraph:
             lead_md.append(_escape_md(_truncate(lead_paragraph, 300)))
-        if lead_md:
-            elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lead_md)}})
+        elements.append({"tag": "div", "text": {"tag": "lark_md", "content": "\n".join(lead_md)}})
 
     # 主体 sections
     for group in flat:

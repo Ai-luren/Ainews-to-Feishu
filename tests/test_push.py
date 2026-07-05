@@ -34,14 +34,6 @@ def _block_aihot_flow(monkeypatch):
                         lambda *a, **kw: True)
 
 
-@pytest.fixture
-def state_path(tmp_path, monkeypatch):
-    p = tmp_path / "state.json"
-    p.write_text(json.dumps({"last_pushed_date": None, "consecutive_failures": 0}))
-    monkeypatch.setattr(push, "STATE_PATH", p)
-    return p
-
-
 def test_skip_when_already_pushed_today(state_path, monkeypatch):
     state_path.write_text(json.dumps({"last_pushed_date": "2026-04-27", "consecutive_failures": 0}))
     monkeypatch.setattr(push, "_today", lambda: date(2026, 4, 27))
@@ -307,33 +299,6 @@ def test_degraded_retry_before_11am(state_path, monkeypatch):
     assert ENV["LARK_OPS_WEBHOOK_URL"] in urls
     # 不标记已推送
     assert json.loads(state_path.read_text())["last_pushed_date"] is None
-
-
-def test_backfill_refuses_to_duplicate_today(state_path, monkeypatch):
-    """防手误：backfill 目标是今天、且今天已推过 → 拒绝重推。"""
-    sent = []
-    real_today = date(2026, 4, 27)
-    state_path.write_text(json.dumps({
-        "last_pushed_date": real_today.isoformat(),
-        "consecutive_failures": 0,
-    }))
-    monkeypatch.setattr(push, "_today", lambda: real_today)
-    monkeypatch.setattr(push, "_is_backfill", lambda: True)
-    monkeypatch.setattr(
-        "push.datetime",
-        type("FakeDateTime", (), {
-            "now": staticmethod(lambda tz=None: datetime(2026, 4, 27, 10, 0, tzinfo=pytz.timezone("Asia/Shanghai"))),
-            "strptime": datetime.strptime,
-        }),
-    )
-    # 这些应该都不被调用
-    monkeypatch.setattr(push, "fetch_rss", lambda: (_ for _ in ()).throw(AssertionError("should not fetch")))
-    monkeypatch.setattr(push, "send_lark_card", lambda *a: sent.append(a))
-
-    with patch.dict(os.environ, ENV):
-        rc = push.main()
-    assert rc == 0
-    assert sent == []  # 没有重推
 
 
 def test_juya_dead_alerts_after_3_silent_days(state_path, monkeypatch):

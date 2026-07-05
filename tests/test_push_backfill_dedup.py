@@ -43,15 +43,6 @@ def _block_aihot_and_builders(monkeypatch):
     monkeypatch.setattr(push, "_push_builders", lambda *a, **kw: True)
 
 
-@pytest.fixture
-def state_path(tmp_path, monkeypatch):
-    """隔离 state.json，避免污染仓库里的真实状态。"""
-    p = tmp_path / "state.json"
-    p.write_text(json.dumps({"last_pushed_date": None, "consecutive_failures": 0}))
-    monkeypatch.setattr(push, "STATE_PATH", p)
-    return p
-
-
 def _wire_juya_happy_path(monkeypatch, sent, fetch_calls):
     """把 juya 拉取/解析/发送链路 mock 成 happy path，并记录发送和 fetch 调用。"""
     monkeypatch.setattr(

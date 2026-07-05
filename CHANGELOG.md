@@ -4,6 +4,33 @@
 
 ---
 
+## [v1.4.0] - 2026-07-06
+
+### 代码库精简（净删除 1295 行）
+
+#### 死代码清理
+- 删除 `lark_card.py` 中未引用的 `DEFAULT_HEADER_TEMPLATE` 和 `CATEGORY_HEADER_TEMPLATE` 死映射（仅保留分类名元组）
+- 删除 `builders.py` 中未使用的 `import logging` 和 `_log = logging.getLogger(__name__)`
+- 删除 `aihot_card.py` 中永真的 `if lead_md:` 判断
+- 删除孤立文件 `docs/how-it-works.html`（609 行，全项目无引用）
+- 删除空文件 `tests/__init__.py`
+
+#### 源码简化
+- `card_utils._truncate` 增加 `limit<=0` 兜底（P3 防御增强）
+- `lark_card.CATEGORY_HEADER_TEMPLATE` 11 行字典 → 4 行元组，同步更新 test_lark_card.py
+
+#### 配置精简
+- `pytest.ini` 从 8 行精简到 3 行（删除 pytest 默认值和不存在目录）
+
+#### 测试合并（20 文件 → 15 文件，184 → 174 用例）
+- 新建 `tests/conftest.py`：抽取 `state_path` fixture（4 文件共用）、`fake_datetime` 工具函数（3 文件共用）、ENV 常量
+- 合并 lark 5 文件 → `test_lark.py`（删 4 个重复用例：text success/card success/text error/card error）
+- 合并 rss 2 文件 → `test_rss.py`（删 1 个重复用例：extract_none）
+- 删除 `test_e2e_tomorrow.py`（4 个低价值测试：2 个重复 + 2 个元测试）
+- 删除 `test_push.py::test_backfill_refuses_to_duplicate_today`（已被 test_push_backfill_dedup 覆盖）
+- `test_push_routing.py` 清理无用 import（json/datetime/pytz/pytest）
+- `test_lark_card.py` 改用 `pathlib.Path` 读 fixture
+
 ## [v1.3.0] - 2026-07-06
 
 ### 第三轮系统审计修复（3 agent 并行排查）
