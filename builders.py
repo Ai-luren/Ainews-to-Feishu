@@ -18,7 +18,7 @@ BEIJING = pytz.timezone("Asia/Shanghai")
 FEED_URL = (
     "https://raw.githubusercontent.com/zarazhangrui/follow-builders/main/feed-x.json"
 )
-USER_AGENT = "ainews-to-feishu/1.0 (+https://github.com/Ai-luren/ainews-to-feishu)"
+USER_AGENT = "Ainews-to-Feishu/1.0 (+https://github.com/Ai-luren/Ainews-to-Feishu)"
 MAX_TWEETS = 10  # 只取互动量最高的 10 条
 
 

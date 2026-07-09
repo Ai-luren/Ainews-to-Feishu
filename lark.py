@@ -7,7 +7,7 @@ from typing import Any, Mapping
 
 import requests
 
-USER_AGENT = "ainews-to-feishu/1.0 (+https://github.com/ainews-to-feishu)"
+USER_AGENT = "Ainews-to-Feishu/1.0 (+https://github.com/Ai-luren/Ainews-to-Feishu)"
 
 # 飞书 webhook 频率限制：同一 webhook 1 分钟内最多 5 条消息。
 # 超过会返回 code=11232 msg="frequency limited"。
