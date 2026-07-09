@@ -2,12 +2,14 @@ version: 2
 
 updates:
   # Python pip 依赖（requirements.txt）
+  # 开启自动合并：pip 依赖升级以小版本/bugfix 为主，CI 测试通过即可自动合入
   - package-ecosystem: "pip"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
     open-pull-requests-limit: 5
+    auto-merge: true
     commit-message:
       prefix: "deps"
     labels:
@@ -15,6 +17,7 @@ updates:
       - "python"
 
   # GitHub Actions 版本
+  # 不开启自动合并：Actions 大版本升级（如 checkout v6→v7）可能破坏 CI，需人工确认
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
