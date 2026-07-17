@@ -60,7 +60,7 @@
 | `LARK_WEBHOOK_SECRET` | 签名 secret |
 | `LARK_OPS_WEBHOOK_URL` | 和上面同一个 URL（单群模式） |
 | `LARK_OPS_WEBHOOK_SECRET` | 和上面同一个 secret（单群模式） |
-| `PUSHPLUS_TOKEN` | PushPlus token（可选，用于微信推送。留空则不推微信） |
+| `WXPUSHER_SPT` | WxPusher SPT token（可选，用于微信推送。留空则不推微信） |
 
 **第 4 步：生成 GitHub PAT**
 - 打开 https://github.com/settings/tokens
@@ -118,7 +118,7 @@ rss.py           # juya RSS 抓取 + 当天条目提取
 aihot.py         # aihot JSON API 拉取
 builders.py      # follow-builders feed 拉取 + Google 翻译
 lark.py          # 飞书 webhook 签名 + POST + 限流重试
-pushplus.py      # PushPlus 微信推送（附加镜像通道）
+wxpusher.py      # WxPusher 微信推送（附加镜像通道，SPT 极简推送）
 lark_card.py     # juya 卡片渲染（HTML → 飞书卡片）
 aihot_card.py    # aihot 卡片渲染（JSON → 飞书卡片）
 builders_card.py # builders 卡片渲染（中英双语）

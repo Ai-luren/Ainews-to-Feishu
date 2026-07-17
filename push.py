@@ -16,7 +16,7 @@ from builders_card import render_card as builders_render_card
 from card_utils import _safe_url
 from lark import send_lark_card, send_lark_text
 from lark_card import parse_entry_to_card
-from pushplus import send_pushplus
+from wxpusher import send_wxpusher
 from rss import extract_today_entry, fetch_rss
 from state import (
     aihot_silent_days, bump_aihot_failure, bump_builders_failure, bump_failure,
@@ -118,20 +118,20 @@ def _alert(ops_webhook: str, ops_secret: str, text: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# PushPlus 微信镜像推送（附加通道，失败不影响主流程）
+# WxPusher 微信镜像推送（附加通道，失败不影响主流程）
 # ---------------------------------------------------------------------------
 
-def _wechat_token() -> str:
-    return os.environ.get("PUSHPLUS_TOKEN", "").strip()
+def _wechat_spt() -> str:
+    return os.environ.get("WXPUSHER_SPT", "").strip()
 
 
 def _mirror_to_wechat(source: str, title: str, content_md: str) -> None:
     """飞书推送成功后，同步推一份 markdown 到微信。失败只记日志。"""
-    token = _wechat_token()
-    if not token:
+    spt = _wechat_spt()
+    if not spt:
         return
     try:
-        send_pushplus(token, title, content_md)
+        send_wxpusher(spt, title, content_md)
         _log(f"[wechat] [ok] mirrored {source}")
     except Exception as e:
         _log(f"[wechat] [warn] mirror {source} failed: {e}", err=True)
