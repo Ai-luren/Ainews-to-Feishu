@@ -16,6 +16,7 @@ from builders_card import render_card as builders_render_card
 from card_utils import _safe_url
 from lark import send_lark_card, send_lark_text
 from lark_card import parse_entry_to_card
+from pushplus import send_pushplus
 from rss import extract_today_entry, fetch_rss
 from state import (
     aihot_silent_days, bump_aihot_failure, bump_builders_failure, bump_failure,
@@ -116,6 +117,67 @@ def _alert(ops_webhook: str, ops_secret: str, text: str) -> None:
         _log(f"[warn] ops alert failed: {e}", err=True)
 
 
+# ---------------------------------------------------------------------------
+# PushPlus 微信镜像推送（附加通道，失败不影响主流程）
+# ---------------------------------------------------------------------------
+
+def _wechat_token() -> str:
+    return os.environ.get("PUSHPLUS_TOKEN", "").strip()
+
+
+def _mirror_to_wechat(source: str, title: str, content_md: str) -> None:
+    """飞书推送成功后，同步推一份 markdown 到微信。失败只记日志。"""
+    token = _wechat_token()
+    if not token:
+        return
+    try:
+        send_pushplus(token, title, content_md)
+        _log(f"[wechat] [ok] mirrored {source}")
+    except Exception as e:
+        _log(f"[wechat] [warn] mirror {source} failed: {e}", err=True)
+
+
+def _juya_to_markdown(entry: dict) -> str:
+    """juya entry → 微信 markdown。"""
+    title = entry.get("title") or "橘鸦 AI 早报"
+    link = _safe_url(entry.get("link"))
+    return f"## 🤖 {title}\n\n[查看完整日报]({link})"
+
+
+def _aihot_to_markdown(daily: dict) -> str:
+    """aihot daily → 微信 markdown，取前 3 个分类各前 3 条。"""
+    d = daily_date(daily) or ""
+    lines = [f"## 🔥 AI HOT 日报 · {d}\n"]
+    for section in daily.get("sections", [])[:3]:
+        label = section.get("label", "")
+        lines.append(f"### {label}")
+        for item in section.get("items", [])[:3]:
+            t = item.get("title", "")
+            u = item.get("sourceUrl", "")
+            if u:
+                lines.append(f"- [{t}]({u})")
+            else:
+                lines.append(f"- {t}")
+        lines.append("")
+    lines.append(f"[查看完整日报]({AIHOT_BASE_URL}/)")
+    return "\n".join(lines)
+
+
+def _builders_to_markdown(daily: dict) -> str:
+    """builders daily → 微信 markdown，取前 5 条推文。"""
+    d = daily.get("date", "")
+    lines = [f"## 🐦 AI 大佬动态 · {d}\n"]
+    for tweet in daily.get("tweets", [])[:5]:
+        zh = tweet.get("text_zh", "")
+        en = tweet.get("text", "")
+        if zh:
+            lines.append(f"🇨🇳 {zh}")
+        if en:
+            lines.append(f"🇺🇸 {en}")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def _record_juya_entry(entry: dict, backfill: bool) -> None:
     """推送成功后记录 juya entry 日期（仅在非 backfill 模式下记录）。"""
     pub_dt = entry.get("published_dt")
@@ -202,6 +264,8 @@ def _push_juya(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
         send_lark_card(webhook, secret, card)
         mark_pushed_today(STATE_PATH, today)
         _record_juya_entry(entry, backfill)
+        _mirror_to_wechat("juya", entry.get("title", "橘鸦 AI 早报"),
+                          _juya_to_markdown(entry))
         _log(f"[juya] [ok] pushed {today}")
         return True
 
@@ -292,6 +356,8 @@ def _push_aihot(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
         mark_aihot_pushed_today(STATE_PATH, today)
         if entry_date and not backfill:
             record_aihot_entry_date(STATE_PATH, entry_date)
+        _mirror_to_wechat("aihot", f"AI HOT 日报 · {entry_date or today}",
+                          _aihot_to_markdown(daily))
         _log(f"[aihot] [ok] pushed {today} ({total_items(daily)} 条)")
         return True
 
@@ -358,6 +424,8 @@ def _push_builders(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
         mark_builders_pushed_today(STATE_PATH, today)
         if entry_date and not backfill:
             record_builders_entry_date(STATE_PATH, entry_date)
+        _mirror_to_wechat("builders", f"AI 大佬动态 · {entry_date or today}",
+                          _builders_to_markdown(daily))
         _log(f"[builders] [ok] pushed {today} ({len(daily.get('tweets', []))} 条推文)")
         return True
 

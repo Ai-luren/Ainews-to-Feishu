@@ -68,6 +68,7 @@ jobs:
           LARK_WEBHOOK_SECRET: ${{ secrets.LARK_WEBHOOK_SECRET }}
           LARK_OPS_WEBHOOK_URL: ${{ secrets.LARK_OPS_WEBHOOK_URL }}
           LARK_OPS_WEBHOOK_SECRET: ${{ secrets.LARK_OPS_WEBHOOK_SECRET }}
+          PUSHPLUS_TOKEN: ${{ secrets.PUSHPLUS_TOKEN }}
           PUSH_TARGET_DATE: ${{ github.event.inputs.target_date }}
           PUSH_MODE: ${{ github.event.inputs.push_mode || 'all' }}
 
