@@ -1,6 +1,6 @@
 # AI 每日早报推送系统
 
-自动聚合 [橘鸦 AI 早报](https://daily.juya.uk/)、[AI HOT](https://aihot.virxact.com/) 和 [follow-builders](https://github.com/zarazhangrui/follow-builders) 三个源的 AI 资讯，解析成飞书卡片，每天定时推送到飞书群。
+自动聚合 [橘鸦 AI 早报](https://daily.juya.uk/)、[AI HOT](https://aihot.virxact.com/) 和 [follow-builders](https://github.com/zarazhangrui/follow-builders) 三个源的 AI 资讯，解析成飞书卡片，每天定时推送到飞书群。同时通过 WxPusher 镜像推送到微信（可选）。
 
 ## 它做什么
 
@@ -15,7 +15,7 @@
 
 ## 效果
 
-飞书群每天最多收到 3 条卡片消息：上午 auto-routing 推 aihot + juya，下午保持 all 三源都推（去重跳过已推的）。
+飞书群每天最多收到 3 条卡片消息：上午 auto-routing 推 aihot + juya，下午保持 all 三源都推（去重跳过已推的）。若配置了 WxPusher SPT，每条飞书卡片推送成功后，会同步推一份 markdown 摘要到微信（附加镜像通道，失败不影响主流程）。
 
 ### 橘鸦 AI 早报
 
@@ -61,6 +61,8 @@
 | `LARK_OPS_WEBHOOK_URL` | 和上面同一个 URL（单群模式） |
 | `LARK_OPS_WEBHOOK_SECRET` | 和上面同一个 secret（单群模式） |
 | `WXPUSHER_SPT` | WxPusher SPT token（可选，用于微信推送。留空则不推微信） |
+
+> **WxPusher SPT 获取方式**：用微信扫码 [此二维码](https://wxpusher.zjiecode.com/api/qrcode/RwjGLMOPTYp35zSYQr0HxbCPrV9eU0wKVBXU1D5VVtya0cQXEJWPjqBdW3gKLifS.jpg)，扫码后微信里会显示你的 SPT（格式 `SPT_xxx`）。需要安装 WxPusher APP 并绑定微信才能收到推送。SPT 泄漏后任何人都能给你发消息，请保密。
 
 **第 4 步：生成 GitHub PAT**
 - 打开 https://github.com/settings/tokens
@@ -156,6 +158,7 @@ flowchart TB
 
     subgraph 输出["📱 输出"]
         F["飞书群<br/>卡片消息"]
+        W["微信（WxPusher）<br/>markdown 摘要"]
     end
 
     C1 -->|"workflow_dispatch<br/>push_mode=all"| R
@@ -171,6 +174,9 @@ flowchart TB
     A -->|"卡片"| F
     J -->|"卡片"| F
     B -->|"双语卡片"| F
+    A -->|"markdown 摘要"| W
+    J -->|"markdown 摘要"| W
+    B -->|"markdown 摘要"| W
 
     style C1 fill:#e1f5fe,stroke:#0288d1
     style R fill:#e3f2fd,stroke:#1976d2
@@ -180,6 +186,7 @@ flowchart TB
     style B fill:#f3e5f5,stroke:#7b1fa2
     style T fill:#fff9c4,stroke:#f9a825
     style F fill:#fce4ec,stroke:#c62828
+    style W fill:#e8f5e9,stroke:#2e7d32
 ```
 
 ## 容错机制
@@ -254,7 +261,8 @@ python push.py
 | `translate.googleapis.com` | Google 免费翻译（英文→中文） |
 | GitHub Actions | workflow 执行环境（仅 workflow_dispatch 触发，无 schedule） |
 | cron-job.org | 定时触发 workflow_dispatch |
-| 飞书开放平台 | 推送通道 |
+| 飞书开放平台 | 主推送通道（卡片） |
+| WxPusher | 附加镜像通道（微信 markdown 摘要，可选） |
 
 ## License
 
