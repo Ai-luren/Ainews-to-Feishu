@@ -6,14 +6,16 @@
 
 ## 目录与命名
 
-- 根目录 Python 文件分别负责数据拉取、卡片渲染、推送和状态管理。
-- `tests/` 存放 pytest 测试，`docs/` 存放设计与运维说明。
+- `src/` 存放所有 Python 源码（数据拉取、卡片渲染、推送、状态管理）。
+- `tests/` 存放 pytest 测试，`docs/` 存放运维说明与经验教训。
+- `assets/` 存放 README 用的卡片截图和 SVG 图。
+- 根目录只放配置文件（`requirements.txt`、`pytest.ini`、`.gitignore`）和运行时文件（`state.json`）。
 - Python 使用 `snake_case`，常量使用 `UPPER_SNAKE_CASE`。
 
 ## 验证命令
 
 ```bash
-pytest -v
+python -m pytest tests/ -v
 ```
 
 修改单一卡片时，先运行对应测试文件，再运行全量测试。
