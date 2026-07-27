@@ -139,6 +139,22 @@ def test_fetch_daily_body_too_large_raises(monkeypatch):
         fetch_daily()
 
 
+@responses.activate
+def test_fetch_daily_non_numeric_content_length():
+    """非数字 Content-Length 不崩溃，由 resp.content 长度检查兜底。
+
+    畸形 header 在真实环境中极少出现（CDN/代理配置错误），
+    但 int() 会抛 ValueError，必须 catch 后降级到 content 长度检查。
+    """
+    responses.add(
+        responses.GET, f"{_DAILY_URL}/latest", status=200, json=_make_daily(),
+        headers={"Content-Length": "not-a-number"},
+    )
+    result = fetch_daily()
+    assert isinstance(result, dict)
+    assert result["date"] == "2026-07-01"
+
+
 # ---------------------------------------------------------------------------
 # fetch_daily: 非 dict 响应 / 结构异常
 # ---------------------------------------------------------------------------

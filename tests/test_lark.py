@@ -4,7 +4,7 @@
 test_lark_send / test_lark_rate_limit 五个文件，删除 4 个重复用例。
 """
 import json
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import responses
@@ -225,3 +225,72 @@ def test_non_rate_limit_error_does_not_retry():
     assert "9499" in str(exc_info.value)
     assert sleeps == []
     assert len(responses.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# UnicodeEncodeError 独立重试（不与频率限制共享计数器）
+# ---------------------------------------------------------------------------
+
+def test_unicode_encode_error_retries_then_success():
+    """UnicodeEncodeError 重试 1 次后成功。"""
+    mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
+    mock_session.post.side_effect = [
+        UnicodeEncodeError("utf-8", "", 0, 1, "error"),
+        MagicMock(status_code=200, json=lambda: {"code": 0, "msg": "ok"}),
+    ]
+
+    sleeps = []
+    with patch("lark._session", return_value=mock_session):
+        with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+            data = _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert data == {"code": 0, "msg": "ok"}
+    assert sleeps == [2]
+    assert mock_session.post.call_count == 2
+
+
+def test_unicode_encode_error_exhausts_retries_raises():
+    """UnicodeEncodeError 连续 3 次（重试 2 次后用完）→ 抛 RuntimeError。"""
+    mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
+    mock_session.post.side_effect = [
+        UnicodeEncodeError("utf-8", "", 0, 1, "error"),
+        UnicodeEncodeError("utf-8", "", 0, 1, "error"),
+        UnicodeEncodeError("utf-8", "", 0, 1, "error"),
+    ]
+
+    sleeps = []
+    with patch("lark._session", return_value=mock_session):
+        with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+            with pytest.raises(RuntimeError, match="编码错误"):
+                _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert sleeps == [2, 2]
+    assert mock_session.post.call_count == 3
+
+
+def test_unicode_encode_and_rate_limit_retry_separately():
+    """UnicodeEncodeError 和频率限制使用独立重试计数器，互不挤占配额。
+
+    2 次 UnicodeEncodeError + 1 次频率限制 + 1 次成功 → 应成功。
+    若共享计数器（max=2），第 3 次频率限制时计数器已用完，会直接抛错。
+    """
+    mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
+    mock_session.post.side_effect = [
+        UnicodeEncodeError("utf-8", "", 0, 1, "error"),
+        UnicodeEncodeError("utf-8", "", 0, 1, "error"),
+        MagicMock(status_code=200, json=lambda: {"code": 11232, "msg": "frequency limited"}),
+        MagicMock(status_code=200, json=lambda: {"code": 0, "msg": "ok"}),
+    ]
+
+    sleeps = []
+    with patch("lark._session", return_value=mock_session):
+        with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+            data = _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert data == {"code": 0, "msg": "ok"}
+    # 2 次 encode 重试（各 sleep 2s）+ 1 次频率限制重试（sleep 30s）
+    assert sleeps == [2, 2, 30]
+    assert mock_session.post.call_count == 4

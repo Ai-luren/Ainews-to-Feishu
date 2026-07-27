@@ -53,9 +53,16 @@ def fetch_daily(target_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
         resp.raise_for_status()
         # 预检 Content-Length，避免大响应全量下载到内存后 OOM
         cl = resp.headers.get("Content-Length")
-        if cl and int(cl) > _MAX_BYTES:
-            resp.close()
-            raise RuntimeError(f"aihot 响应过大: {cl} bytes (limit {_MAX_BYTES})")
+        if cl:
+            try:
+                cl_bytes = int(cl)
+            except (TypeError, ValueError):
+                # 非数字 Content-Length（畸形 header）跳过预检，
+                # 由下方 resp.content 长度检查兜底
+                cl_bytes = 0
+            if cl_bytes > _MAX_BYTES:
+                resp.close()
+                raise RuntimeError(f"aihot 响应过大: {cl} bytes (limit {_MAX_BYTES})")
         content = resp.content
         if len(content) > _MAX_BYTES:
             resp.close()
