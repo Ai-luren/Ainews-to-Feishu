@@ -46,11 +46,11 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
         clean = []
         for item in items:
             title = _s(item.get("title"))
-            links = item.get("links") or {}
-            url = _s(links.get("original"))
+            links = item.get("links")
+            url = _s(links.get("original")) if isinstance(links, dict) else ""
             summary = _s(item.get("summary"))
-            source_obj = item.get("source") or {}
-            source = _s(source_obj.get("name"))
+            source_obj = item.get("source")
+            source = _s(source_obj.get("name")) if isinstance(source_obj, dict) else ""
             if not title or not url:
                 continue
             clean.append({"title": title, "url": url, "summary": summary, "source": source})
@@ -103,8 +103,8 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
         flash_lines = ["**快讯**"]
         for f in flashes[:10]:  # 最多 10 条
             flash_title = _s(f.get("title"))
-            flash_links = f.get("links") or {}
-            flash_url = _s(flash_links.get("original"))
+            flash_links = f.get("links")
+            flash_url = _s(flash_links.get("original")) if isinstance(flash_links, dict) else ""
             if not flash_title or not flash_url:
                 continue
             flash_lines.append(f"• [{_escape_md(_truncate(flash_title, 150))}]({_safe_url(flash_url)})")

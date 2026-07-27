@@ -265,3 +265,34 @@ def test_parse_daily_none_input():
 def test_parse_daily_empty_dict():
     """测试空 dict 输入返回 None（无 sections）。"""
     assert parse_daily_to_card({}) is None
+
+
+def test_parse_daily_links_not_dict_does_not_crash():
+    """links 字段是字符串而非 dict 时不崩溃，该条目被跳过（url 为空）。"""
+    daily = _make_daily(sections=[
+        {"label": "测试", "items": [
+            {"title": "ok", "links": "https://not-a-dict.com", "source": "src"},
+        ]},
+    ])
+    # links 不是 dict → url="" → title 有但 url 空 → 跳过 → 无可用条目 → None
+    assert parse_daily_to_card(daily) is None
+
+
+def test_parse_daily_source_not_dict_does_not_crash():
+    """source 字段是字符串而非 dict 时不崩溃，source 显示为空。"""
+    daily = _make_daily(sections=[
+        {"label": "测试", "items": [
+            {"title": "ok", "links": {"original": "https://example.com"},
+             "source": "not-a-dict"},
+        ]},
+    ])
+    card = parse_daily_to_card(daily)
+    assert card is not None
+    # source 不是 dict → source="" → 不显示来源行（但条目仍渲染）
+    all_text = " ".join(
+        e.get("text", {}).get("content", "")
+        for e in card["elements"]
+        if e.get("tag") == "div"
+    )
+    assert "ok" in all_text
+    assert "not-a-dict" not in all_text
