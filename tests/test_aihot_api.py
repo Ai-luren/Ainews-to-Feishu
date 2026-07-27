@@ -1,6 +1,6 @@
 """aihot.fetch_daily API 网络层测试 + 纯函数测试。
 
-用 responses 库 mock aihot API（https://aihot.virxact.com/api/public/daily），
+用 responses 库 mock aihot API（https://aihot.virxact.com/api/v1/dailies/latest），
 覆盖 fetch_daily 的正常路径、404/401/403 错误分支、响应过大防护、非 dict 响应，
 以及 daily_date / has_content / total_items 三个纯函数。
 """
@@ -22,14 +22,22 @@ from aihot import (
 
 
 def _make_daily(**overrides):
-    """构造合法的 aihot 日报响应体。"""
+    """构造合法的 aihot v1 日报响应体。
+
+    v1 响应在顶层有 schemaVersion + report 包装，
+    fetch_daily 内部解包 report 后返回，下游无感知。
+    """
     base = {
-        "date": "2026-07-01",
-        "sections": [
-            {"label": "大模型", "items": [
-                {"title": "test", "sourceUrl": "https://example.com"},
-            ]},
-        ],
+        "schemaVersion": 1,
+        "report": {
+            "date": "2026-07-01",
+            "sections": [
+                {"label": "大模型", "items": [
+                    {"title": "test", "links": {"original": "https://example.com"},
+                     "source": {"name": ""}},
+                ]},
+            ],
+        },
     }
     base.update(overrides)
     return base
@@ -53,7 +61,7 @@ def test_fetch_daily_with_date_returns_dict():
 @responses.activate
 def test_fetch_daily_no_date_returns_dict():
     """不指定日期拉最新一期，正常返回 dict。"""
-    responses.add(responses.GET, _DAILY_URL, status=200, json=_make_daily())
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=200, json=_make_daily())
     result = fetch_daily()
     assert isinstance(result, dict)
     assert result["date"] == "2026-07-01"
@@ -75,7 +83,7 @@ def test_fetch_daily_404_with_date_returns_none():
 @responses.activate
 def test_fetch_daily_404_without_date_raises():
     """最新一期 404 = API 端点异常，抛 RuntimeError。"""
-    responses.add(responses.GET, _DAILY_URL, status=404, body="not found")
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=404, body="not found")
     with pytest.raises(RuntimeError, match="404"):
         fetch_daily()
 
@@ -87,7 +95,7 @@ def test_fetch_daily_404_without_date_raises():
 @responses.activate
 def test_fetch_daily_403_raises_unrecoverable():
     """403 = IP 被封，不可自动恢复，抛 RuntimeError。"""
-    responses.add(responses.GET, _DAILY_URL, status=403, body="forbidden")
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=403, body="forbidden")
     with pytest.raises(RuntimeError, match="不可自动恢复"):
         fetch_daily()
 
@@ -95,7 +103,7 @@ def test_fetch_daily_403_raises_unrecoverable():
 @responses.activate
 def test_fetch_daily_401_raises():
     """401 = 鉴权失败，抛 RuntimeError。"""
-    responses.add(responses.GET, _DAILY_URL, status=401, body="unauthorized")
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=401, body="unauthorized")
     with pytest.raises(RuntimeError, match="401"):
         fetch_daily()
 
@@ -112,7 +120,7 @@ def test_fetch_daily_content_length_too_large_raises(monkeypatch):
     """
     monkeypatch.setattr(aihot, "_MAX_BYTES", 50)
     # _make_daily() 序列化后 > 50 字节，Content-Length 也会 > 50
-    responses.add(responses.GET, _DAILY_URL, status=200, json=_make_daily())
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=200, json=_make_daily())
     with pytest.raises(RuntimeError, match="过大"):
         fetch_daily()
 
@@ -126,32 +134,37 @@ def test_fetch_daily_body_too_large_raises(monkeypatch):
     两条防线都会抛 RuntimeError("过大")。
     """
     monkeypatch.setattr(aihot, "_MAX_BYTES", 50)
-    responses.add(responses.GET, _DAILY_URL, status=200, body=b"x" * 100)
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=200, body=b"x" * 100)
     with pytest.raises(RuntimeError, match="过大"):
         fetch_daily()
 
 
 # ---------------------------------------------------------------------------
-# fetch_daily: 非 dict 响应
+# fetch_daily: 非 dict 响应 / 结构异常
 # ---------------------------------------------------------------------------
 
 @responses.activate
 def test_fetch_daily_non_dict_raises():
-    """响应非 dict（如 JSON 数组）→ 抛错，不能静默通过。
-
-    注意：aihot.py 在构造错误消息时调用 list(data.keys())，
-    非 dict 响应必须报 ValueError。
-    """
-    responses.add(responses.GET, _DAILY_URL, status=200, json=[1, 2, 3])
+    """响应非 dict（如 JSON 数组）→ 抛错，不能静默通过。"""
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=200, json=[1, 2, 3])
     with pytest.raises(ValueError, match="非 dict"):
         fetch_daily()
 
 
 @responses.activate
-def test_fetch_daily_dict_missing_keys_raises_value_error():
-    """响应是 dict 但缺少 date/sections 字段 → 抛 ValueError。"""
-    responses.add(responses.GET, _DAILY_URL, status=200, json={"foo": "bar"})
-    with pytest.raises(ValueError, match="响应结构异常"):
+def test_fetch_daily_dict_missing_report_raises_value_error():
+    """响应是 dict 但缺少 report 字段 → 抛 ValueError。"""
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=200, json={"foo": "bar"})
+    with pytest.raises(ValueError, match="缺少 report"):
+        fetch_daily()
+
+
+@responses.activate
+def test_fetch_daily_report_missing_keys_raises_value_error():
+    """report 存在但缺少 date/sections 字段 → 抛 ValueError。"""
+    responses.add(responses.GET, f"{_DAILY_URL}/latest", status=200,
+                  json={"schemaVersion": 1, "report": {"foo": "bar"}})
+    with pytest.raises(ValueError, match="结构异常"):
         fetch_daily()
 
 

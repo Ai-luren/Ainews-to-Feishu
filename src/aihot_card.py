@@ -4,7 +4,7 @@
 - juya: RSS 的 HTML 中需要解析 HTML → sections 提取
 - aihot: 直接是 JSON sections[] → 不用 HTML 解析
 - aihot 还有 lead（导语）+ flashes（快讯）
-- 每条条目有 title/summary/sourceName/sourceUrl 四个字段
+- 每条条目有 title/summary/source.name/links.original 四个字段
 """
 from typing import Any, Dict, List, Mapping, Optional
 
@@ -24,7 +24,7 @@ _DEFAULT_HEADER_TEMPLATE = "purple"
 
 
 def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
-    """把 aihot daily（/api/public/daily 返回值）渲染为飞书卡片。
+    """把 aihot daily（/api/v1/dailies/latest 返回值）渲染为飞书卡片。
 
     无条目（sections 为空或所有 section 都空）时返回 None
     None，给调用方降级到纯文本推送。
@@ -46,9 +46,11 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
         clean = []
         for item in items:
             title = _s(item.get("title"))
-            url = _s(item.get("sourceUrl"))
+            links = item.get("links") or {}
+            url = _s(links.get("original"))
             summary = _s(item.get("summary"))
-            source = _s(item.get("sourceName"))
+            source_obj = item.get("source") or {}
+            source = _s(source_obj.get("name"))
             if not title or not url:
                 continue
             clean.append({"title": title, "url": url, "summary": summary, "source": source})
@@ -101,7 +103,8 @@ def parse_daily_to_card(daily: Mapping[str, Any]) -> Optional[Dict[str, Any]]:
         flash_lines = ["**快讯**"]
         for f in flashes[:10]:  # 最多 10 条
             flash_title = _s(f.get("title"))
-            flash_url = _s(f.get("sourceUrl"))
+            flash_links = f.get("links") or {}
+            flash_url = _s(flash_links.get("original"))
             if not flash_title or not flash_url:
                 continue
             flash_lines.append(f"• [{_escape_md(_truncate(flash_title, 150))}]({_safe_url(flash_url)})")

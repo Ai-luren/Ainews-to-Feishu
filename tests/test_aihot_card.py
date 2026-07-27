@@ -18,9 +18,9 @@ from aihot_card import parse_daily_to_card
 def _make_item(**overrides):
     base = {
         "title": "Test News Item",
-        "sourceUrl": "https://example.com/news/1",
+        "links": {"original": "https://example.com/news/1"},
         "summary": "This is a test summary",
-        "sourceName": "TestSource",
+        "source": {"name": "TestSource"},
     }
     base.update(overrides)
     return base
@@ -151,7 +151,7 @@ def test_parse_daily_no_lead():
 def test_parse_daily_flash():
     """测试快讯渲染。"""
     daily = _make_daily(flashes=[
-        {"title": "快讯标题", "sourceUrl": "https://example.com/flash/1"},
+        {"title": "快讯标题", "links": {"original": "https://example.com/flash/1"}},
     ])
     card = parse_daily_to_card(daily)
     assert card is not None
@@ -167,7 +167,7 @@ def test_parse_daily_flash():
 def test_parse_daily_flash_url_safe():
     """测试快讯 URL 安全校验。"""
     daily = _make_daily(flashes=[
-        {"title": "快讯", "sourceUrl": "javascript:alert(1)"},
+        {"title": "快讯", "links": {"original": "javascript:alert(1)"}},
     ])
     card = parse_daily_to_card(daily)
     assert card is not None
@@ -185,7 +185,7 @@ def test_parse_daily_flash_url_safe():
 def test_parse_daily_javascript_url_blocked():
     """测试 javascript: URL 被替换为 #。"""
     daily = _make_daily(sections=[
-        {"label": "测试", "items": [_make_item(sourceUrl="javascript:alert(1)")]},
+        {"label": "测试", "items": [_make_item(links={"original": "javascript:alert(1)"})]},
     ])
     card = parse_daily_to_card(daily)
     assert card is not None

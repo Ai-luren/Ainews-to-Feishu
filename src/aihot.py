@@ -7,7 +7,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
 AIHOT_BASE_URL = "https://aihot.virxact.com"
-_DAILY_URL = f"{AIHOT_BASE_URL}/api/public/daily"
+_DAILY_URL = f"{AIHOT_BASE_URL}/api/v1/dailies"
 
 _UA = "Mozilla/5.0 aihot-skill/0.2.0"
 _TIMEOUT = (5, 20)
@@ -33,7 +33,7 @@ def fetch_daily(target_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
     - 401/403 = 鉴权失败/IP被封，不可自动恢复，抛明确错误信息
     - 响应过大 = stream 预检 Content-Length，拒绝下载，防 OOM
     """
-    url = f"{_DAILY_URL}/{target_date}" if target_date else _DAILY_URL
+    url = f"{_DAILY_URL}/{target_date}" if target_date else f"{_DAILY_URL}/latest"
     with _session() as s:
         resp = s.get(url, timeout=_TIMEOUT, stream=True)
         if resp.status_code == 404:
@@ -64,9 +64,13 @@ def fetch_daily(target_date: Optional[date] = None) -> Optional[Dict[str, Any]]:
 
     if not isinstance(data, dict):
         raise ValueError(f"aihot 响应非 dict: {type(data).__name__}")
-    if "date" not in data or "sections" not in data:
-        raise ValueError(f"aihot 响应结构异常: {list(data.keys())}")
-    return data
+    # v1 响应：报告本体在 report 字段里，解包后返回，下游无感知
+    report = data.get("report")
+    if not isinstance(report, dict):
+        raise ValueError(f"aihot v1 响应缺少 report 字段: {list(data.keys())}")
+    if "date" not in report or "sections" not in report:
+        raise ValueError(f"aihot v1 report 结构异常: {list(report.keys())}")
+    return report
 
 
 def total_items(daily: Dict[str, Any]) -> int:
