@@ -1,7 +1,7 @@
 name: daily-ai-news-push
 
 # 2026-06-16 起 GitHub Actions 强制 Node 24。
-# 本 workflow 使用的 actions/checkout@v6 与 actions/setup-python@v6
+# 本 workflow 使用的 actions/checkout@v7 与 actions/setup-python@v6
 # 已原生使用 node24 runtime，无需额外配置。
 
 on:
@@ -34,7 +34,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # fetch-depth:0 —— commit state.json 时 git pull --rebase
           # 在 shallow clone 下可能报错，所以拉取完整历史
