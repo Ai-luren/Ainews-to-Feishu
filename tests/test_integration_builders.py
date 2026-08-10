@@ -122,13 +122,18 @@ def test_integration_builders_partial_translate_failure():
 @responses.activate
 def test_integration_builders_engagement_ordering():
     """互动量排序正确。"""
-    feed = _make_feed()
-    feed["x"][0]["tweets"][0]["likes"] = 100
-    feed["x"][0]["tweets"][0]["retweets"] = 50
-    feed["x"][1]["tweets"][0]["likes"] = 500
-    feed["x"][1]["tweets"][0]["retweets"] = 200
-    feed["x"][2]["tweets"][0]["likes"] = 300
-    feed["x"][2]["tweets"][0]["retweets"] = 100
+    # 每个 builder 只放 1 条推文，确保 engagement 完全由测试控制
+    feed = {
+        "generatedAt": "2026-07-01T00:30:00.000Z",
+        "x": [
+            {"name": "A", "handle": "a", "bio": "",
+             "tweets": [{"text": "ta", "url": "u1", "likes": 100, "retweets": 50}]},
+            {"name": "B", "handle": "b", "bio": "",
+             "tweets": [{"text": "tb", "url": "u2", "likes": 500, "retweets": 200}]},
+            {"name": "C", "handle": "c", "bio": "",
+             "tweets": [{"text": "tc", "url": "u3", "likes": 300, "retweets": 100}]},
+        ],
+    }
     responses.add(responses.GET, FEED_URL, status=200, json=feed)
     with patch.object(builders, "_translate", lambda t: f"[译]{t}"):
         daily = fetch_daily()
