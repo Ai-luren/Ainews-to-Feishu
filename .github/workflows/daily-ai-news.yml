@@ -102,3 +102,23 @@ jobs:
               exit 1
             fi
           fi
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          LARK_OPS_WEBHOOK_URL: ${{ secrets.LARK_OPS_WEBHOOK_URL }}
+          LARK_OPS_WEBHOOK_SECRET: ${{ secrets.LARK_OPS_WEBHOOK_SECRET }}
+        run: |
+          PYTHONPATH=src python -c "
+          import os
+          from lark import send_lark_text
+          webhook = os.environ.get('LARK_OPS_WEBHOOK_URL', '')
+          secret = os.environ.get('LARK_OPS_WEBHOOK_SECRET', '')
+          if not webhook:
+              print('no ops webhook configured, skip')
+              exit(0)
+          send_lark_text(
+              webhook, secret,
+              '⚠️ AI新闻推送 workflow 失败\n仓库: ${{ github.repository }}\n运行: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}'
+          )
+          " || true

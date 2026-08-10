@@ -1,4 +1,4 @@
-"""lark 模块完整测试：签名、文本推送、卡片推送、频率限制重试。
+"""lark 模块完整测试：签名、文本推送、卡片推送、频率限制重试、网络异常重试、卡片大小截断。
 
 合并自 test_lark_sign / test_send_lark_text / test_send_lark_card /
 test_lark_send / test_lark_rate_limit 五个文件，删除 4 个重复用例。
@@ -7,6 +7,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+import requests
 import responses
 
 from lark import (
@@ -294,3 +295,146 @@ def test_unicode_encode_and_rate_limit_retry_separately():
     # 2 次 encode 重试（各 sleep 2s）+ 1 次频率限制重试（sleep 30s）
     assert sleeps == [2, 2, 30]
     assert mock_session.post.call_count == 4
+
+
+# ---------------------------------------------------------------------------
+# 网络异常重试（ConnectionError / Timeout / 5xx）
+# ---------------------------------------------------------------------------
+
+def test_connection_error_retries_then_success():
+    """ConnectionError 重试 1 次后成功。"""
+    mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
+    mock_session.post.side_effect = [
+        requests.exceptions.ConnectionError("conn refused"),
+        MagicMock(status_code=200, json=lambda: {"code": 0, "msg": "ok"}),
+    ]
+
+    sleeps = []
+    with patch("lark._session", return_value=mock_session):
+        with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+            data = _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert data == {"code": 0, "msg": "ok"}
+    assert sleeps == [5]
+    assert mock_session.post.call_count == 2
+
+
+def test_connection_error_exhausts_retries_raises():
+    """ConnectionError 连续 3 次（重试 2 次后用完）→ 抛 RuntimeError。"""
+    mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
+    mock_session.post.side_effect = [
+        requests.exceptions.ConnectionError("conn refused"),
+        requests.exceptions.ConnectionError("conn refused"),
+        requests.exceptions.ConnectionError("conn refused"),
+    ]
+
+    sleeps = []
+    with patch("lark._session", return_value=mock_session):
+        with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+            with pytest.raises(RuntimeError, match="网络异常"):
+                _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert sleeps == [5, 15]
+    assert mock_session.post.call_count == 3
+
+
+def test_timeout_retries_then_success():
+    """Timeout 重试后成功。"""
+    mock_session = MagicMock()
+    mock_session.__enter__.return_value = mock_session
+    mock_session.post.side_effect = [
+        requests.exceptions.Timeout("read timeout"),
+        MagicMock(status_code=200, json=lambda: {"code": 0, "msg": "ok"}),
+    ]
+
+    sleeps = []
+    with patch("lark._session", return_value=mock_session):
+        with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+            data = _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert data == {"code": 0, "msg": "ok"}
+    assert sleeps == [5]
+
+
+@responses.activate
+def test_http_500_retries_then_success():
+    """HTTP 500 重试后成功。"""
+    responses.add(responses.POST, WEBHOOK, status=500, body="server error")
+    responses.add(responses.POST, WEBHOOK, json={"code": 0, "msg": "ok"}, status=200)
+
+    sleeps = []
+    with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+        data = _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert data == {"code": 0, "msg": "ok"}
+    assert sleeps == [5]
+    assert len(responses.calls) == 2
+
+
+@responses.activate
+def test_http_503_exhausts_retries_raises():
+    """HTTP 503 连续 3 次 → 抛 RuntimeError。"""
+    for _ in range(3):
+        responses.add(responses.POST, WEBHOOK, status=503, body="unavailable")
+
+    sleeps = []
+    with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+        with pytest.raises(RuntimeError, match="503"):
+            _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert sleeps == [5, 15]
+    assert len(responses.calls) == 3
+
+
+@responses.activate
+def test_http_400_does_not_retry():
+    """HTTP 400（客户端错误）不重试，立即抛错。"""
+    responses.add(responses.POST, WEBHOOK, status=400, body="bad request")
+
+    sleeps = []
+    with patch("lark.time.sleep", lambda s: sleeps.append(s)):
+        with pytest.raises(RuntimeError, match="400"):
+            _post_json(WEBHOOK, {"msg_type": "text", "content": {"text": "hi"}}, 5)
+
+    assert sleeps == []
+    assert len(responses.calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# 卡片大小截断
+# ---------------------------------------------------------------------------
+
+def test_fit_card_size_no_truncation_when_small():
+    """小卡片不截断，原样返回。"""
+    from lark import _fit_card_size
+    card = {"header": {"title": {"tag": "plain_text", "content": "t"}},
+            "elements": [{"tag": "div", "text": {"tag": "lark_md", "content": "x"}}]}
+    result = _fit_card_size(card, "sign", 1700000000, 28000)
+    assert result == card
+
+
+def test_fit_card_size_truncates_when_large():
+    """超大卡片截断 elements 并附加截断提示。"""
+    from lark import _fit_card_size
+    big_text = "x" * 500
+    elements = [{"tag": "div", "text": {"tag": "lark_md", "content": big_text}} for _ in range(100)]
+    card = {"header": {"title": {"tag": "plain_text", "content": "t"}}, "elements": elements}
+
+    result = _fit_card_size(card, "sign", 1700000000, 28000)
+    result_elements = result.get("elements", [])
+    assert len(result_elements) < 100  # 被截断了
+    # 最后一个元素是截断提示
+    last = result_elements[-1]
+    assert "截断" in last.get("text", {}).get("content", "")
+
+
+def test_fit_card_size_minimal_when_header_alone_exceeds():
+    """即使 header 本身就超限，也返回最小卡片（只有截断提示）。"""
+    from lark import _fit_card_size
+    card = {"header": {"title": {"tag": "plain_text", "content": "x" * 50000}}, "elements": []}
+    result = _fit_card_size(card, "sign", 1700000000, 1000)
+    elements = result.get("elements", [])
+    assert len(elements) == 1
+    assert "截断" in elements[0].get("text", {}).get("content", "")

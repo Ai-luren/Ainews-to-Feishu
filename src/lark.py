@@ -16,6 +16,13 @@ _RATE_LIMIT_CODE = 11232
 _RATE_LIMIT_RETRIES = 2
 _RATE_LIMIT_WAIT = 30  # 秒
 
+# 网络异常重试（ConnectionError / Timeout / 5xx），backoff: 5s, 15s
+_NETWORK_RETRIES = 2
+_NETWORK_BACKOFFS = [5, 15]
+
+# 飞书卡片请求体限制 30KB，留 2KB 余量给 timestamp/sign 外层
+_MAX_CARD_BYTES = 28000
+
 
 def _session() -> requests.Session:
     """单次 HTTP session（不做 POST 自动重试，避免非幂等请求重复推送）。"""
@@ -51,27 +58,46 @@ def lark_sign(secret: str, timestamp: int) -> str:
 def _post_json(webhook: str, payload: Mapping[str, Any], timeout: int) -> Mapping[str, Any]:
     """共用的飞书 webhook POST：处理非 200 / 非 JSON / 业务 code != 0 三种失败。
 
-    遇到频率限制（code=11232）时自动等待 30 秒重试，最多重试 2 次。
-    UnicodeEncodeError 单独计数重试，不和频率限制挤占配额。
+    重试策略（独立计数器，互不挤占）：
+    - 频率限制（code=11232）：等待 30s 重试，最多 2 次
+    - UnicodeEncodeError：等待 2s 重试，最多 2 次
+    - 网络异常（ConnectionError / Timeout / 5xx）：backoff 5s/15s，最多 2 次
     """
     if not webhook or not isinstance(webhook, str) or not webhook.startswith(("http://", "https://")):
         raise ValueError(f"invalid webhook (scheme not http/https, got: {str(webhook)[:30]!r}...)")
 
     rate_limit_retries = 0
     encode_retries = 0
+    network_retries = 0
     while True:
         try:
             with _session() as s:
                 resp = s.post(webhook, json=payload, timeout=timeout)
         except UnicodeEncodeError as e:
-            # 偶发：requests/urllib3 在处理响应 header 时遇到非 ASCII 字符
-            # 重试一次通常能成功
             if encode_retries < _RATE_LIMIT_RETRIES:
                 encode_retries += 1
                 print(f"[lark] UnicodeEncodeError, 重试 ({encode_retries}/{_RATE_LIMIT_RETRIES}): {e}", flush=True)
                 time.sleep(2)
                 continue
             raise RuntimeError(f"lark 请求编码错误（重试已用完）: {e}") from e
+        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+            if network_retries < _NETWORK_RETRIES:
+                backoff = _NETWORK_BACKOFFS[network_retries]
+                network_retries += 1
+                print(f"[lark] 网络异常, {backoff}s 后重试 ({network_retries}/{_NETWORK_RETRIES}): {e}", flush=True)
+                time.sleep(backoff)
+                continue
+            raise RuntimeError(f"lark 网络异常（重试已用完）: {e}") from e
+
+        if 500 <= resp.status_code < 600:
+            if network_retries < _NETWORK_RETRIES:
+                backoff = _NETWORK_BACKOFFS[network_retries]
+                network_retries += 1
+                print(f"[lark] HTTP {resp.status_code}, {backoff}s 后重试 ({network_retries}/{_NETWORK_RETRIES})", flush=True)
+                time.sleep(backoff)
+                continue
+            raise RuntimeError(f"lark http {resp.status_code}（重试已用完）: {resp.text[:200]}")
+
         if resp.status_code != 200:
             raise RuntimeError(f"lark http {resp.status_code}: {resp.text[:200]}")
         try:
@@ -106,14 +132,40 @@ def send_lark_text(webhook: str, secret: str, text: str, timeout: int = 10) -> N
     _post_json(webhook, payload, timeout)
 
 
+def _fit_card_size(card: Mapping[str, Any], sign: str, timestamp: int, max_bytes: int) -> Mapping[str, Any]:
+    """如果卡片 payload 超过 max_bytes，从尾部截断 elements 并附加截断提示。"""
+    def _payload_size(c: Mapping[str, Any]) -> int:
+        p = {"timestamp": str(timestamp), "sign": sign, "msg_type": "interactive", "card": c}
+        return len(json.dumps(p, ensure_ascii=False).encode("utf-8"))
+
+    if _payload_size(card) <= max_bytes:
+        return card
+
+    elements = list(card.get("elements", []))
+    target = max_bytes - 200  # 留余量给截断提示
+    while elements and _payload_size({**card, "elements": elements}) > target:
+        elements.pop()
+
+    notice = {"tag": "div", "text": {"tag": "lark_md", "content": "⚠️ 内容过长，已截断部分条目"}}
+    if not elements:
+        return {**card, "elements": [notice]}
+    elements.append(notice)
+    return {**card, "elements": elements}
+
+
 def send_lark_card(webhook: str, secret: str, card: Mapping[str, Any], timeout: int = 10) -> None:
-    """推一张 interactive 卡片到飞书。失败抛 RuntimeError。"""
+    """推一张 interactive 卡片到飞书。失败抛 RuntimeError。
+
+    自动检查卡片大小，超过飞书 30KB 限制时截断 elements 列表。
+    """
     if not isinstance(card, dict) or not card:
         raise ValueError("card must be a non-empty dict")
     timestamp = int(time.time())
+    sign = lark_sign(secret, timestamp)
+    card = _fit_card_size(card, sign, timestamp, _MAX_CARD_BYTES)
     payload: Mapping[str, Any] = {
         "timestamp": str(timestamp),
-        "sign": lark_sign(secret, timestamp),
+        "sign": sign,
         "msg_type": "interactive",
         "card": card,
     }
