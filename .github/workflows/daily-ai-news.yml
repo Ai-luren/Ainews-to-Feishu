@@ -54,7 +54,7 @@ jobs:
           PYTHONPATH=src python -c "import lark, lark_card, rss, state, push; print('import ok:', rss.get_effective_rss_url())"
 
       - name: Run tests
-        run: python -m pytest tests/ -v
+        run: python -m pytest tests/ -v --tb=long -x
         env:
           LARK_WEBHOOK_URL: https://example.com/hook/main
           LARK_WEBHOOK_SECRET: test-secret
