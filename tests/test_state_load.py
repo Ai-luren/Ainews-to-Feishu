@@ -1,4 +1,4 @@
-"""补充测试：state.load_state 兜底场景 + juya 死亡检测相关函数。
+"""补充测试：state.load_state 兜底场景 + juya 死亡检测相关函数 + last_run 记录。
 
 原 test_state.py 只覆盖了 is_pushed_today / mark_pushed_today / bump_failure / reset_failure
 四个主流程函数；未覆盖：
@@ -6,6 +6,7 @@
   - save_state: 原子写入契约
   - record_juya_entry_date / get_last_juya_entry_date / juya_silent_days
   - should_alert_juya_dead / mark_juya_dead_alerted
+  - record_last_run / get_last_run
 """
 
 import json
@@ -14,12 +15,14 @@ from pathlib import Path
 
 from state import (
     get_last_juya_entry_date,
+    get_last_run,
     is_pushed_today,
     juya_silent_days,
     load_state,
     mark_juya_dead_alerted,
     mark_pushed_today,
     record_juya_entry_date,
+    record_last_run,
     reset_failure,
     save_state,
     should_alert_juya_dead,
@@ -88,6 +91,16 @@ def test_load_state_preserves_existing_fields(tmp_path):
     assert data["last_juya_entry_date"] is None
     assert data["juya_dead_alerted_on"] is None
     assert data["extra"] == "ok"               # 已有字段保留
+
+
+def test_load_state_includes_last_run_defaults(tmp_path):
+    """load_state 应包含 last_run 相关字段的默认值。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    data = load_state(p)
+    assert data["last_run_at"] is None
+    assert data["last_run_status"] is None
+    assert data["last_run_error"] is None
 
 
 # ---------------------------------------------------------------------------
@@ -164,3 +177,82 @@ def test_should_alert_and_mark_juya_dead_alerted(tmp_path):
     mark_juya_dead_alerted(p, today)
     assert should_alert_juya_dead(p, today) is False   # 同一天不再告警
     assert should_alert_juya_dead(p, date(2026, 4, 28)) is True  # 第二天可以再次告警
+
+
+# ---------------------------------------------------------------------------
+# last_run 记录
+# ---------------------------------------------------------------------------
+
+def test_record_last_run_ok(tmp_path):
+    """record_last_run(status='ok') 应写入 last_run_at 和 last_run_status，error 为 None。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    record_last_run(p, status="ok")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["last_run_status"] == "ok"
+    assert data["last_run_error"] is None
+    assert data["last_run_at"] is not None  # 应有时间戳
+
+
+def test_record_last_run_failed_with_error(tmp_path):
+    """record_last_run(status='failed', error=...) 应写入错误信息。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    record_last_run(p, status="failed", error="aihot,juya")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["last_run_status"] == "failed"
+    assert data["last_run_error"] == "aihot,juya"
+
+
+def test_record_last_run_partial(tmp_path):
+    """record_last_run(status='partial') 应正确写入。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    record_last_run(p, status="partial", error="builders")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["last_run_status"] == "partial"
+    assert data["last_run_error"] == "builders"
+
+
+def test_get_last_run_returns_none_when_unset(tmp_path):
+    """未记录 last_run 时 get_last_run 返回 None。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    assert get_last_run(p) is None
+
+
+def test_get_last_run_returns_recorded_data(tmp_path):
+    """记录后 get_last_run 应返回包含 at/status/error 的 dict。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    record_last_run(p, status="ok")
+    result = get_last_run(p)
+    assert result is not None
+    assert result["last_run_status"] == "ok"
+    assert result["last_run_at"] is not None
+    assert result["last_run_error"] is None
+
+
+def test_record_last_run_overwrites_previous(tmp_path):
+    """多次调用 record_last_run 应覆盖前一次的记录。"""
+    p = tmp_path / "state.json"
+    p.write_text("{}")
+    record_last_run(p, status="failed", error="aihot")
+    record_last_run(p, status="ok")
+    result = get_last_run(p)
+    assert result["last_run_status"] == "ok"
+    assert result["last_run_error"] is None
+
+
+def test_record_last_run_preserves_other_fields(tmp_path):
+    """record_last_run 不应破坏 state.json 中的其他字段。"""
+    p = tmp_path / "state.json"
+    p.write_text(json.dumps({
+        "juya_pushed_date": "2026-04-27",
+        "consecutive_failures": 3,
+    }))
+    record_last_run(p, status="ok")
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["juya_pushed_date"] == "2026-04-27"
+    assert data["consecutive_failures"] == 3
+    assert data["last_run_status"] == "ok"
