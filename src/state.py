@@ -35,6 +35,10 @@ from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+import pytz
+
+BEIJING = pytz.timezone("Asia/Shanghai")
+
 
 @contextmanager
 def _state_lock(path: Path):
@@ -333,7 +337,7 @@ def record_last_run(path: Path, status: str, error: Optional[str] = None) -> Non
     """
     with _state_lock(path):
         data = load_state(path)
-        data["last_run_at"] = datetime.now().isoformat()
+        data["last_run_at"] = datetime.now(BEIJING).isoformat()
         data["last_run_status"] = status
         data["last_run_error"] = error
         save_state(path, data)

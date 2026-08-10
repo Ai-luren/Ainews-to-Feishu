@@ -274,6 +274,11 @@ def _push_aihot(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
             _log(f"[aihot] [skip] content date {entry_date} != today {today} (backfill)")
             return False
         _log(f"[aihot] [skip] content date {entry_date} != today {today}（还未更新）")
+        # 日期不匹配 = 源头有内容但未更新到今天，与"无内容"等价，同样检查停更告警
+        _handle_dead_alert("aihot", f"{AIHOT_BASE_URL}/",
+                           aihot_silent_days, get_last_aihot_entry_date,
+                           should_alert_aihot_dead, mark_aihot_dead_alerted,
+                           ops_webhook, ops_secret, today)
         return True
 
     # 渲染推送
@@ -357,6 +362,12 @@ def _push_builders(webhook: str, secret: str, ops_webhook: str, ops_secret: str,
             _log(f"[builders] [skip] feed date {entry_date} != today {today} (backfill)")
             return False
         _log(f"[builders] [skip] feed date {entry_date} != today {today}（还未更新）")
+        # 日期不匹配 = 源头有内容但未更新到今天，与"无内容"等价，同样检查停更告警
+        _handle_dead_alert("follow-builders",
+                           "https://github.com/zarazhangrui/follow-builders",
+                           builders_silent_days, get_last_builders_entry_date,
+                           should_alert_builders_dead, mark_builders_dead_alerted,
+                           ops_webhook, ops_secret, today)
         return True
 
     # 渲染推送
