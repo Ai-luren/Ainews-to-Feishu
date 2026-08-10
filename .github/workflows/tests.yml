@@ -1,0 +1,30 @@
+name: tests
+
+on:
+  push:
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '.github/workflows/tests.yml'
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.11'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Sanity check
+        run: PYTHONPATH=src python -c "import lark, lark_card, rss, state, push; print('import ok')"
+      - name: Run tests
+        run: python -m pytest tests/ -v --tb=long -x
+        env:
+          LARK_WEBHOOK_URL: https://example.com/hook/main
+          LARK_WEBHOOK_SECRET: test-secret
+          LARK_OPS_WEBHOOK_URL: https://example.com/hook/ops
+          LARK_OPS_WEBHOOK_SECRET: test-ops-secret
