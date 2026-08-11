@@ -6,15 +6,15 @@
   "juya_pushed_date": "2026-08-10",
   "juya_failures": 0,
   "juya_degraded_alerted_on": null,
-  "aihot_pushed_date": "2026-08-10",
+  "aihot_pushed_date": "2026-08-11",
   "aihot_failures": 0,
-  "last_aihot_entry_date": "2026-08-10",
+  "last_aihot_entry_date": "2026-08-11",
   "aihot_dead_alerted_on": null,
   "builders_pushed_date": "2026-08-10",
   "builders_failures": 0,
   "last_builders_entry_date": "2026-08-10",
   "builders_dead_alerted_on": null,
-  "last_run_at": "2026-08-10T16:31:09.790519+08:00",
+  "last_run_at": "2026-08-11T08:01:08.528051+08:00",
   "last_run_status": "ok",
   "last_run_error": null
 }
